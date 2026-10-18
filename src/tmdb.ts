@@ -271,7 +271,10 @@ export function titleById(type: MediaType, id: number): Promise<Title | null> {
   if (!p) {
     p = call<unknown>(`/${type}/${id}`)
       .then((d) => mapTitle(d, type))
-      .catch(() => null)
+      .catch(() => {
+        basicCache.delete(k) // un errore non va ricordato: la prossima volta riprova
+        return null
+      })
     basicCache.set(k, p)
   }
   return p

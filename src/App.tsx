@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import * as tmdb from './tmdb'
 import type { Detail, Kind, Query, Title } from './tmdb'
 import { getOmdbKey, requestRatings, setOmdbKey, useRatings } from './omdb'
@@ -7,6 +7,8 @@ import { useLists } from './store'
 import type { ListName, Lists as ListsData } from './store'
 import { MAX_VIEWS, useViews } from './views'
 import type { View } from './views'
+import { SUGGESTED_SOURCES, useSources } from './sources'
+import type { Platform } from './sources'
 
 type Tab = 'explore' | 'search' | 'recs' | 'lists' | 'settings'
 type Opener = (t: Title) => void
@@ -45,29 +47,58 @@ function badges(t: Title, r: Ratings | undefined, enabled: boolean) {
   return list
 }
 
-function Grid({ items, open, empty }: { items: Title[]; open: Opener; empty?: string }) {
+interface ListsApi {
+  has: (l: ListName, t: Title) => boolean
+  toggle: (l: ListName, t: Title) => void
+}
+const ListsCtx = createContext<ListsApi>({ has: () => false, toggle: () => undefined })
+
+function PosterCard({ t, name, sub, due, open }: { t?: Title; name: string; sub: string; due?: string; open: Opener }) {
   const R = useRatings()
+  const { has, toggle } = useContext(ListsCtx)
+  const fav = t ? has('favorites', t) : false
+  const watch = t ? has('watchlist', t) : false
+  const go = () => t && open(t)
+  return (
+    <div className="card">
+      <div className="poster">
+        <button className="open" onClick={go} aria-label={`Apri ${name}`}>
+          {t?.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt="" /> : <div className="noimg">{name}</div>}
+        </button>
+        {due && <span className="due">{due}</span>}
+        <div className="qa">
+          <button className={fav ? 'on' : ''} disabled={!t} aria-pressed={fav} aria-label={fav ? 'Togli dai preferiti' : 'Aggiungi ai preferiti'} onClick={() => t && toggle('favorites', t)}>
+            {fav ? '★' : '☆'}
+          </button>
+          <button className={watch ? 'on' : ''} disabled={!t} aria-pressed={watch} aria-label={watch ? 'Togli da Da vedere' : 'Aggiungi a Da vedere'} onClick={() => t && toggle('watchlist', t)}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill={watch ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3h12v18l-6-4-6 4z" />
+            </svg>
+          </button>
+        </div>
+        {t && (
+          <div className="badges">
+            {badges(t, R.get(t), R.enabled).map((b) => (
+              <span key={b}>{b}</span>
+            ))}
+          </div>
+        )}
+      </div>
+      <button className="open meta" onClick={go}>
+        <b>{name}</b>
+        <span className="muted">{sub}</span>
+      </button>
+    </div>
+  )
+}
+
+function Grid({ items, open, empty }: { items: Title[]; open: Opener; empty?: string }) {
   useEffect(() => requestRatings(items), [items])
   if (!items.length) return <p className="muted">{empty ?? 'Nessun risultato.'}</p>
   return (
     <div className="grid">
       {items.map((t) => (
-        <button key={t.type + t.id} className="card" onClick={() => open(t)}>
-          <div className="poster">
-            {t.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt={t.title} /> : <div className="noimg">{t.title}</div>}
-            <div className="badges">
-              {badges(t, R.get(t), R.enabled).map((b) => (
-                <span key={b}>{b}</span>
-              ))}
-            </div>
-          </div>
-          <div className="meta">
-            <b>{t.title}</b>
-            <span className="muted">
-              {t.year} · {t.type === 'movie' ? 'Film' : 'Serie'}
-            </span>
-          </div>
-        </button>
+        <PosterCard key={t.type + t.id} t={t} name={t.title} sub={`${t.year} · ${t.type === 'movie' ? 'Film' : 'Serie'}`} open={open} />
       ))}
     </div>
   )
@@ -149,7 +180,7 @@ function daysLabel(ts: number) {
   return d <= 0 ? 'oggi' : d === 1 ? 'domani' : `tra ${d} giorni`
 }
 
-function Expiring({ open }: { open: Opener }) {
+function Expiring({ open, active }: { open: Opener; active: boolean }) {
   const [data, setData] = useState<{ generatedAt: string; items: ExpiringItem[] } | null>(null)
   const [min, setMin] = useState(() => Number(localStorage.getItem('exp_min') ?? 7))
   const [service, setService] = useState('')
@@ -178,7 +209,7 @@ function Expiring({ open }: { open: Opener }) {
       live = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownKey])
+  }, [shownKey, active])
 
   if (!data?.items.length) return null
   const services = [...new Map(data.items.map((i) => [i.service, i.serviceName])).entries()]
@@ -201,24 +232,16 @@ function Expiring({ open }: { open: Opener }) {
         <p className="muted">Nessun titolo in scadenza con questi criteri.</p>
       ) : (
         <div className="exp">
-          {shown.map((i) => {
-            const t = titles[i.type + i.id]
-            return (
-              <button key={i.type + i.id + i.service} className="card" onClick={() => t && open(t)}>
-                <div className="poster">
-                  {t?.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt={i.title} /> : <div className="noimg">{i.title}</div>}
-                  <span className="due">{daysLabel(i.expiresAt)}</span>
-                  <div className="badges">
-                    {i.imdb !== null && <span>IMDb {num(i.imdb)}</span>}
-                  </div>
-                </div>
-                <div className="meta">
-                  <b>{i.title}</b>
-                  <span className="muted">{i.serviceName}</span>
-                </div>
-              </button>
-            )
-          })}
+          {shown.map((i) => (
+            <PosterCard
+              key={i.type + i.id + i.service}
+              t={titles[i.type + i.id]}
+              name={i.title}
+              sub={`${i.serviceName}${i.imdb !== null ? ` · IMDb ${num(i.imdb)}` : ''}`}
+              due={daysLabel(i.expiresAt)}
+              open={open}
+            />
+          ))}
         </div>
       )}
       <p className="muted">Dati per l'Italia, aggiornati il {new Date(data.generatedAt).toLocaleDateString('it-IT')}.</p>
@@ -328,7 +351,7 @@ function Explore({ open, seen, views, active }: { open: Opener; seen: Title[]; v
         onApply={(v) => { setQ(v.query); setActiveView(v.id) }}
       />
 
-      <Expiring open={open} />
+      <Expiring open={open} active={active} />
 
       <div className="row between">
         <h2>Esplora</h2>
@@ -519,9 +542,66 @@ function KeyField({ label, help, value, onSave }: { label: string; help: string;
   )
 }
 
-function Settings({ lists, views, replaceLists }: { lists: ListsData; views: ViewsApi; replaceLists: (l: ListsData) => void }) {
+const PLATFORM_LABEL: Record<Platform, string> = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', x: 'X', other: 'Link' }
+
+function LinkList({ title, help, placeholder, items, onAdd, onRemove, extra }: {
+  title: string
+  help: string
+  placeholder: string
+  items: { id: string; url: string; name: string; tag?: string }[]
+  onAdd: (v: string) => string | null
+  onRemove: (id: string) => void
+  extra?: React.ReactNode
+}) {
+  const [v, setV] = useState('')
+  const [err, setErr] = useState('')
+  function add() {
+    const e = onAdd(v)
+    setErr(e ?? '')
+    if (!e) setV('')
+  }
+  return (
+    <>
+      <h2>{title}</h2>
+      <p className="muted">{help}</p>
+      <div className="row">
+        <input
+          className="grow"
+          value={v}
+          placeholder={placeholder}
+          onChange={(e) => { setV(e.target.value); setErr('') }}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+        />
+        <button className="primary" onClick={add}>Aggiungi</button>
+      </div>
+      {err && <p className="err">{err}</p>}
+      {extra}
+      {items.length === 0 ? (
+        <p className="muted">Nessun elemento.</p>
+      ) : (
+        <ul className="links">
+          {items.map((i) => (
+            <li key={i.id}>
+              <a href={i.url} target="_blank" rel="noreferrer">{i.name}</a>
+              {i.tag && <span className="muted"> · {i.tag}</span>}
+              <button aria-label={`Rimuovi ${i.name}`} onClick={() => onRemove(i.id)}>Rimuovi</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+function Settings({ lists, views, replaceLists, src }: {
+  lists: ListsData
+  views: ViewsApi
+  replaceLists: (l: ListsData) => void
+  src: ReturnType<typeof useSources>
+}) {
   function exportJson() {
-    const blob = new Blob([JSON.stringify({ lists, views: views.views }, null, 2)], { type: 'application/json' })
+    const data = { lists, views: views.views, sources: src.sources, profiles: src.profiles }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = 'marquee-backup.json'
@@ -532,17 +612,48 @@ function Settings({ lists, views, replaceLists }: { lists: ListsData; views: Vie
       const d = JSON.parse(await file.text())
       replaceLists(d.lists ?? d)
       if (Array.isArray(d.views)) views.replace(d.views)
+      src.replace(d.sources, d.profiles)
     } catch {
       alert('File non valido.')
     }
   }
+  const missing = SUGGESTED_SOURCES.filter((s) => !src.sources.some((x) => x.url.replace(/\/$/, '') === s.url))
 
   return (
     <>
       <h1>Impostazioni</h1>
+
+      <LinkList
+        title="Fonti di qualità"
+        help="Siti e riviste di cui ti fidi per i consigli. Per ora li salviamo qui; li useremo per la scheda Il meglio."
+        placeholder="https://www.mymovies.it"
+        items={src.sources}
+        onAdd={(v) => src.addSource(v)}
+        onRemove={src.removeSource}
+        extra={
+          missing.length > 0 && (
+            <div className="row">
+              <span className="muted">Suggerite:</span>
+              {missing.map((m) => (
+                <Chip key={m.url} onClick={() => src.addSource(m.url, m.name)}>+ {m.name}</Chip>
+              ))}
+            </div>
+          )
+        }
+      />
+
+      <LinkList
+        title="Profili da cui prendere spunto"
+        help="Instagram, TikTok, YouTube o altro. Incolla il link del profilo oppure scrivi @nomeprofilo (vale come Instagram)."
+        placeholder="https://www.instagram.com/nomeprofilo"
+        items={src.profiles.map((p) => ({ id: p.id, url: p.url, name: p.name, tag: PLATFORM_LABEL[p.platform] }))}
+        onAdd={(v) => src.addProfile(v)}
+        onRemove={src.removeProfile}
+      />
+
       <KeyField label="Chiave TMDB" help="Si crea gratis su themoviedb.org (Impostazioni, API). Resta salvata solo in questo dispositivo. Vanno bene sia la chiave API v3 sia il token Read Access." value={tmdb.getKey()} onSave={tmdb.setKey} />
       <KeyField label="Chiave OMDb (IMDb, Rotten Tomatoes, Metacritic)" help="Si crea gratis su omdbapi.com/apikey.aspx (1000 richieste al giorno). Serve per i punteggi e i relativi filtri." value={getOmdbKey()} onSave={setOmdbKey} />
-      <h2>Backup di liste e viste</h2>
+      <h2>Backup di liste, viste, fonti e profili</h2>
       <div className="row">
         <button onClick={exportJson}>Esporta</button>
         <label>
@@ -626,26 +737,27 @@ export default function App() {
   const [sel, setSel] = useState<Title | null>(null)
   const { lists, has, toggle, replace } = useLists()
   const views = useViews()
+  const src = useSources()
 
   const tabs: [Tab, string][] = [
     ['explore', 'Esplora'], ['search', 'Cerca'], ['recs', 'Consigli'], ['lists', 'Liste'], ['settings', 'Impost.'],
   ]
 
   return (
-    <>
+    <ListsCtx.Provider value={{ has, toggle }}>
       <div hidden={tab !== 'explore'}>
         <Explore open={setSel} seen={lists.seen} views={views} active={tab === 'explore'} />
       </div>
       {tab === 'search' && <Search open={setSel} />}
       {tab === 'recs' && <Recs open={setSel} favorites={lists.favorites} seen={lists.seen} />}
       {tab === 'lists' && <Lists open={setSel} lists={lists} />}
-      {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} />}
+      {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} src={src} />}
       {sel && <DetailSheet t={sel} close={() => setSel(null)} has={has} toggle={toggle} open={setSel} />}
       <nav>
         {tabs.map(([k, label]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{label}</button>
         ))}
       </nav>
-    </>
+    </ListsCtx.Provider>
   )
 }
