@@ -30,6 +30,7 @@ export function activeChips(q: Query): ActiveChip[] {
   for (const id of q.providers) {
     add('prov-' + id, tmdb.PROVIDERS.find((p) => p.id === id)?.name ?? String(id), { providers: q.providers.filter((x) => x !== id) })
   }
+  if (!q.onlyItaly) add('italy', 'Anche non disponibili in Italia', { onlyItaly: true })
   if (q.onlyMine) add('mine', 'Solo i miei abbonamenti', { onlyMine: false })
   if (q.monetization !== 'any') add('mon', MONETIZATION[q.monetization], { monetization: 'any' })
   if (q.actor) add('actor', `Con ${q.actor.name}`, { actor: undefined })
@@ -45,6 +46,7 @@ export function activeChips(q: Query): ActiveChip[] {
   if (q.minRt) add('rt', `Rotten Tomatoes ${q.minRt}%+`, { minRt: 0 })
   if (q.minMeta) add('meta', `Metacritic ${q.minMeta}+`, { minMeta: 0 })
   if (q.minTmdb) add('tmdb', `TMDB ${num(q.minTmdb)}+`, { minTmdb: 0 })
+  if (q.strictRatings && (q.minImdb || q.minRt || q.minMeta)) add('strict', 'Servono tutti i voti', { strictRatings: false })
   if (q.hideSeen) add('seen', 'Nascondi i visti', { hideSeen: false })
   return out
 }

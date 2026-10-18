@@ -9,6 +9,15 @@ import { useLists, useOpen } from './ctx'
 
 export const num = (n: number) => String(n).replace('.', ',')
 
+/** Spiegazione breve di un punteggio, mostrata al passaggio del mouse. */
+export function scoreTip(label: string): string {
+  if (label.startsWith('IMDb')) return 'Voto del pubblico su IMDb, da 0 a 10'
+  if (label.startsWith('RT')) return 'Rotten Tomatoes: percentuale di critici favorevoli'
+  if (label.startsWith('MC')) return 'Metacritic: media dei voti della critica, da 0 a 100'
+  if (label.startsWith('TMDB')) return 'Voto del pubblico su TMDB, da 0 a 10'
+  return label
+}
+
 export function scoreChips(t: Title, r: Ratings | undefined, enabled: boolean): string[] {
   const list: string[] = []
   if (r?.imdb !== undefined) list.push(`IMDb ${num(r.imdb)}`)
@@ -44,19 +53,19 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
           {t?.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt="" /> : <div className="noimg">{name}</div>}
         </button>
         {rank !== undefined && <span className="rank">{rank}</span>}
-        {tag && <span className={'tag ' + (tagTone === 'gold' ? 'gold' : '')}>{tag}</span>}
+        {tag && <span className={'tag ' + (tagTone === 'gold' ? 'gold' : '')} data-tip="Quando esce dal catalogo della piattaforma">{tag}</span>}
         <div className="qa">
-          <button className={fav ? 'on' : ''} disabled={!t} aria-pressed={fav} aria-label={fav ? 'Togli dai preferiti' : 'Aggiungi ai preferiti'} onClick={() => t && toggle('favorites', t)}>
+          <button className={fav ? 'on' : ''} disabled={!t} aria-pressed={fav} aria-label={fav ? 'Togli dai preferiti' : 'Aggiungi ai preferiti'} data-tip={fav ? 'Nei preferiti: tocca per togliere' : 'Aggiungi ai preferiti'} onClick={() => t && toggle('favorites', t)}>
             <Icon name="star" size={16} fill={fav} />
           </button>
-          <button className={watch ? 'on' : ''} disabled={!t} aria-pressed={watch} aria-label={watch ? 'Togli da Da vedere' : 'Aggiungi a Da vedere'} onClick={() => t && toggle('watchlist', t)}>
+          <button className={watch ? 'on' : ''} disabled={!t} aria-pressed={watch} aria-label={watch ? 'Togli da Da vedere' : 'Aggiungi a Da vedere'} data-tip={watch ? 'In «Da vedere»: tocca per togliere' : 'Aggiungi a «Da vedere»'} onClick={() => t && toggle('watchlist', t)}>
             <Icon name="bookmark" size={16} fill={watch} />
           </button>
         </div>
         {(chips.length > 0 || topScore) && (
           <div className="score">
-            {topScore && <span className="top">{topScore}</span>}
-            {chips.map((c) => <span key={c}>{c}</span>)}
+            {topScore && <span className="top" data-tip="Punteggio Marquee da 0 a 100: critica, pubblico e premi">{topScore}</span>}
+            {chips.map((c) => <span key={c} data-tip={scoreTip(c)}>{c}</span>)}
           </div>
         )}
       </div>
@@ -131,7 +140,7 @@ export function Sheet({ title, onClose, children, drawer, className = '' }: {
         {title && (
           <div className="panel-head">
             <h2>{title}</h2>
-            <button className="iconbtn" onClick={onClose} aria-label="Chiudi"><Icon name="x" /></button>
+            <button className="iconbtn" onClick={onClose} aria-label="Chiudi" data-tip="Chiudi"><Icon name="x" /></button>
           </div>
         )}
         {children}

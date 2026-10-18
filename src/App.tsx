@@ -88,7 +88,7 @@ function Shell() {
         <OpenCtx.Provider value={setSel}>
           <div className="shell">
             <header className="hdr">
-              <button className="brand" onClick={() => go('home')} aria-label="Marquee, vai alla home">
+              <button className="brand" onClick={() => go('home')} aria-label="Marquee, vai alla home" data-tip="Torna alla home">
                 <span className="bulbs" aria-hidden="true"><i /><i /><i /></span>
                 Marquee
               </button>
@@ -98,8 +98,8 @@ function Shell() {
                 ))}
               </nav>
               <span className="spacer" />
-              <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca"><Icon name="search" size={19} /></button>
-              <button className={'iconbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni"><Icon name="sliders" size={19} /></button>
+              <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip="Cerca un titolo"><Icon name="search" size={19} /></button>
+              <button className={'iconbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip="Impostazioni: chiavi, abbonamenti, backup"><Icon name="sliders" size={19} /></button>
             </header>
 
             <main>
@@ -133,7 +133,7 @@ function Shell() {
             {NAV.map((n) => {
               const on = NAV_OF[tab] === n.id
               return (
-                <button key={n.id} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined} aria-label={n.label} onClick={() => go(n.id)}>
+                <button key={n.id} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined} aria-label={n.label} data-tip={n.label} onClick={() => go(n.id)}>
                   <Icon name={n.icon} size={22} fill={on && n.icon === 'star'} />
                   <span>{n.label}</span>
                 </button>

@@ -73,6 +73,8 @@ export interface Query {
   yearTo?: string
   providers: number[]
   monetization: Monetization
+  /** solo titoli che si possono guardare in Italia (abbonamento, noleggio o acquisto) */
+  onlyItaly: boolean
   onlyMine: boolean
   actor?: { id: number; name: string }
   director?: { id: number; name: string }
@@ -81,6 +83,8 @@ export interface Query {
   minImdb: number
   minRt: number
   minMeta: number
+  /** true = senza tutti i voti richiesti il titolo è escluso; false = contano solo i voti disponibili */
+  strictRatings: boolean
   maxRuntime?: number
   maxEpisode?: number
   status?: 'ended' | 'ongoing'
@@ -97,11 +101,13 @@ export const emptyQuery: Query = {
   genreMode: 'all',
   providers: [],
   monetization: 'any',
+  onlyItaly: true,
   onlyMine: false,
   minTmdb: 0,
   minImdb: 0,
   minRt: 0,
   minMeta: 0,
+  strictRatings: false,
   gentle: false,
   hideSeen: false,
   sort: 'popularity',
@@ -242,12 +248,14 @@ interface Spec {
   type: MediaType
   tvType?: string
   extraGenre?: number
+  /** serie concluse da tenere solo se hanno una stagione e pochi episodi (miniserie non etichettate da TMDB) */
+  limited?: boolean
 }
 
 const SPECS: Record<Kind, Spec[]> = {
   film: [{ type: 'movie' }],
   series: [{ type: 'tv', tvType: '4' }],
-  miniseries: [{ type: 'tv', tvType: '2' }],
+  miniseries: [{ type: 'tv', tvType: '2' }, { type: 'tv', tvType: '4', limited: true }],
   doc: [{ type: 'movie', extraGenre: 99 }, { type: 'tv', extraGenre: 99 }],
   animation: [{ type: 'movie', extraGenre: 16 }, { type: 'tv', extraGenre: 16 }],
 }
@@ -261,10 +269,12 @@ const SORT_PARAM = (type: MediaType, s: Sort) =>
         ? 'primary_release_date.desc'
         : 'first_air_date.desc'
 
-async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEntry[]): Promise<Title[]> {
+async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEntry[]): Promise<{ items: Title[]; raw: number }> {
+  // le miniserie "nascoste" tra le serie concluse non hanno senso se si cercano serie in corso
+  if (spec.limited && q.status === 'ongoing') return { items: [], raw: 0 }
   const gIds = q.genres.map((n) => genres.find((g) => g.name === n)?.[spec.type]).filter((x): x is number => !!x)
   // se i generi scelti non esistono per questo tipo (es. un genere solo da film) non c'è nulla da cercare
-  if (q.genres.length && !gIds.length) return []
+  if (q.genres.length && !gIds.length) return { items: [], raw: 0 }
   const moodIds = [...new Set(q.moods.flatMap((m) => MOODS.find((x) => x.id === m)?.[spec.type] ?? []))]
   // virgola = tutti i generi insieme, barra = almeno uno: non si possono mescolare
   let withGenres = ''
@@ -273,7 +283,9 @@ async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEnt
   else withGenres = moodIds.join('|')
   const without = q.gentle ? (spec.type === 'movie' ? [27, 10752] : [10768]) : []
   const df = spec.type === 'movie' ? 'primary_release_date' : 'first_air_date'
-  const monetization = q.monetization === 'any' ? (q.providers.length ? 'flatrate' : undefined) : q.monetization
+  // "disponibile in Italia": almeno un abbonamento, noleggio o acquisto nel paese
+  const monetization =
+    q.monetization !== 'any' ? q.monetization : q.providers.length ? 'flatrate' : q.onlyItaly ? 'flatrate|free|ads|rent|buy' : undefined
   const r = await call<{ results: unknown[] }>(`/discover/${spec.type}`, {
     sort_by: SORT_PARAM(spec.type, q.sort),
     with_genres: withGenres || undefined,
@@ -289,13 +301,39 @@ async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEnt
     'with_runtime.lte': spec.type === 'movie' ? q.maxRuntime : q.maxEpisode,
     with_original_language: q.lang,
     with_origin_country: q.country,
-    with_status: spec.type === 'tv' ? (q.status === 'ended' ? 3 : q.status === 'ongoing' ? 0 : undefined) : undefined,
+    with_status: spec.type === 'tv' ? (spec.limited ? 3 : q.status === 'ended' ? 3 : q.status === 'ongoing' ? 0 : undefined) : undefined,
     with_crew: spec.type === 'movie' ? q.director?.id : undefined,
     certification_country: q.gentle && spec.type === 'movie' ? 'US' : undefined,
     'certification.lte': q.gentle && spec.type === 'movie' ? 'PG-13' : undefined,
     page,
   })
-  return clean(r.results.map((x) => mapTitle(x, spec.type)))
+  const titles = clean(r.results.map((x) => mapTitle(x, spec.type)))
+  return { items: spec.limited ? await onlyLimited(titles) : titles, raw: titles.length }
+}
+
+const shapeCache = new Map<number, Promise<{ seasons: number; episodes: number } | null>>()
+
+function tvShape(id: number) {
+  let p = shapeCache.get(id)
+  if (!p) {
+    p = call<{ number_of_seasons?: number; number_of_episodes?: number }>(`/tv/${id}`)
+      .then((d) => ({ seasons: d.number_of_seasons ?? 0, episodes: d.number_of_episodes ?? 0 }))
+      .catch(() => {
+        shapeCache.delete(id)
+        return null
+      })
+    shapeCache.set(id, p)
+  }
+  return p
+}
+
+/** Tiene le serie con una sola stagione e al massimo 12 episodi: sono miniserie anche se TMDB non le etichetta così. */
+async function onlyLimited(titles: Title[]): Promise<Title[]> {
+  const shapes = await Promise.all(titles.map((t) => tvShape(t.id)))
+  return titles.filter((_, i) => {
+    const sh = shapes[i]
+    return !!sh && sh.seasons === 1 && sh.episodes > 0 && sh.episodes <= 12
+  })
 }
 
 function sortTitles(list: Title[], s: Sort): Title[] {
@@ -332,15 +370,16 @@ export async function discover(q: Query, page: number): Promise<{ items: Title[]
     return { items: sortTitles(await actorTitles(q, genres), q.sort), more: false }
   }
   const specs = q.kinds.flatMap((k) => SPECS[k])
-  const lists = await Promise.all(specs.map((s) => discoverSpec(s, q, page, genres)))
+  const results = await Promise.all(specs.map((s) => discoverSpec(s, q, page, genres)))
   const seen = new Set<string>()
-  const merged = lists.flat().filter((t) => {
+  const merged = results.flatMap((r) => r.items).filter((t) => {
     const k = t.type + t.id
     if (seen.has(k)) return false
     seen.add(k)
     return !!t.poster
   })
-  return { items: sortTitles(merged, q.sort), more: page < 20 && lists.some((l) => l.length > 0) }
+  // "more" guarda i risultati grezzi: una pagina può svuotarsi dopo il filtro sulle miniserie ma averne altre dopo
+  return { items: sortTitles(merged, q.sort), more: page < 20 && results.some((r) => r.raw > 0) }
 }
 
 /** Ricerca libera su discover con parametri grezzi (usata da "Scegli per me"). */

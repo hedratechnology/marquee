@@ -360,3 +360,24 @@ input[type='file'] { display: none; }
 .pickcard.stacked .reasons { margin: 16px 0 14px; }
 .pickcard.stacked .btn { height: 40px; padding: 0 16px; }
 @media (min-width: 760px) { .pickhead { grid-template-columns: 130px 1fr; } .pickhead h3 { font-size: 1.9rem; } .pickcard.stacked { padding: 22px; } }
+
+/* ---------- suggerimenti al passaggio del mouse ---------- */
+.poster { overflow: visible; }
+.poster .open { border-radius: 14px; overflow: hidden; }
+.poster::after { border-radius: 0 0 14px 14px; }
+.card:hover { position: relative; z-index: 6; }
+.score span { pointer-events: auto; }
+button[data-tip], .score span[data-tip] { position: relative; }
+@media (hover: hover) {
+  [data-tip]:hover::after, [data-tip]:focus-visible::after {
+    content: attr(data-tip); position: absolute; z-index: 80; white-space: nowrap;
+    padding: 6px 10px; border-radius: 8px; font: 500 0.75rem/1.25 var(--ui); letter-spacing: 0; text-transform: none; font-style: normal;
+    background: #f5efe4; color: #14100b; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5); pointer-events: none;
+    top: calc(100% + 8px); right: 0;
+  }
+  .qa [data-tip]:hover::after, .qa [data-tip]:focus-visible::after { top: 50%; right: calc(100% + 8px); transform: translateY(-50%); }
+  .score [data-tip]:hover::after { top: auto; bottom: calc(100% + 8px); right: auto; left: 0; white-space: normal; width: max-content; max-width: 220px; }
+  .tag[data-tip]:hover::after { top: calc(100% + 6px); left: 0; right: auto; }
+  .brand[data-tip]:hover::after, .activechips [data-tip]:hover::after, .rthumb[data-tip]:hover::after { left: 0; right: auto; }
+  .panel-head [data-tip]:hover::after, .close[data-tip]:hover::after { right: 0; }
+}

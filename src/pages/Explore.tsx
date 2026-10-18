@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as tmdb from '../tmdb'
 import type { Kind, Mood, Query, Title } from '../tmdb'
-import { getOmdbKey, useRatings } from '../omdb'
+import { getOmdbKey, requestRatings, useRatings } from '../omdb'
+import type { Ratings } from '../omdb'
 import type { useViews } from '../views'
 import { MAX_VIEWS } from '../views'
 import { aiErrorText, getAiKey, nlToQuery, parseQuery } from '../ai'
@@ -120,6 +121,10 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
             <option value="buy">Da comprare</option>
           </select>
         </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          <Chip on={q.onlyItaly} onClick={() => set({ onlyItaly: !q.onlyItaly })}>Solo disponibili in Italia</Chip>
+        </div>
+        <p className="muted" style={{ marginTop: 8 }}>Disponibili in Italia = in abbonamento, a noleggio o da comprare: di solito doppiati o sottotitolati in italiano.</p>
         {q.actor && q.providers.length > 0 && <p className="muted">Con un attore selezionato le piattaforme non si applicano.</p>}
       </div>
       <div className="group">
@@ -129,6 +134,16 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
         <Range label="Rotten Tomatoes" value={q.minRt} min={0} max={100} step={5} suffix="%" onChange={(v) => set({ minRt: v })} />
         <Range label="Metacritic" value={q.minMeta} min={0} max={100} step={5} onChange={(v) => set({ minMeta: v })} />
         <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
+        {(q.minImdb > 0 || q.minRt > 0 || q.minMeta > 0) && (
+          <>
+            <div className="row" style={{ marginTop: 10 }}>
+              <Chip on={q.strictRatings} onClick={() => set({ strictRatings: !q.strictRatings })}>Servono tutti i voti</Chip>
+            </div>
+            <p className="muted" style={{ marginTop: 8 }}>
+              Rotten Tomatoes e Metacritic spesso mancano per serie e titoli recenti. Di solito contano solo i voti che esistono; con questa opzione un titolo senza uno dei voti richiesti viene escluso.
+            </p>
+          </>
+        )}
       </div>
       <div className="group">
         <span className="eyebrow">Durata e ritmo</span>
@@ -251,6 +266,9 @@ export function Explore({ seen, views, active, request }: {
     }
   }, [])
 
+  // i punteggi si cercano per TUTTI i titoli caricati, non solo per quelli che passano il filtro
+  useEffect(() => requestRatings(items), [items])
+
   // richieste dall'esterno (frase libera dalla schermata "Ho voglia di…")
   useEffect(() => {
     if (request && request.id !== lastRequest.current) {
@@ -262,7 +280,14 @@ export function Explore({ seen, views, active, request }: {
   }, [request])
 
   // "solo i miei abbonamenti" si traduce nelle piattaforme salvate; punteggi e visti si applicano lato client
-  const effective: Query = { ...q, providers: q.onlyMine && mine.length ? mine : q.providers, minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false }
+  // un voto minimo alto su IMDb/Rotten Tomatoes si traduce in una soglia più prudente su TMDB, per non scorrere titoli scarsi
+  const hint = Math.max(q.minTmdb, q.minImdb ? Math.max(0, q.minImdb - 1.2) : 0, q.minRt >= 80 ? 6.3 : 0, q.minMeta >= 70 ? 6.3 : 0)
+  const effective: Query = {
+    ...q,
+    providers: q.onlyMine && mine.length ? mine : q.providers,
+    minTmdb: Math.round(hint * 10) / 10,
+    minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false, strictRatings: false,
+  }
   const serverKey = JSON.stringify(effective)
   useEffect(() => {
     load(JSON.parse(serverKey), 1)
@@ -275,20 +300,27 @@ export function Explore({ seen, views, active, request }: {
 
   const seenSet = new Set(seen.map((t) => t.type + t.id))
   const ratingFilter = !!(q.minImdb || q.minRt || q.minMeta)
+  // senza chiave OMDb non ci sono voti da confrontare: meglio non nascondere tutto
+  const ratingActive = ratingFilter && R.enabled
+  const passesRatings = (r: Ratings | undefined) => {
+    if (!ratingActive) return true
+    if (!r) return false // punteggi non ancora caricati
+    const reqs: [number, number | undefined][] = [[q.minImdb, r.imdb], [q.minRt, r.rt], [q.minMeta, r.meta]]
+    const active = reqs.filter(([min]) => min > 0)
+    const known = active.filter(([, v]) => v !== undefined)
+    if (q.strictRatings && known.length < active.length) return false
+    if (!known.length) return false
+    return known.every(([min, v]) => (v as number) >= min)
+  }
   const visible = items.filter((t) => {
     if (q.hideSeen && seenSet.has(t.type + t.id)) return false
-    if (!ratingFilter) return true
-    const r = R.get(t)
-    if (!r) return false
-    if (q.minImdb && !(r.imdb !== undefined && r.imdb >= q.minImdb)) return false
-    if (q.minRt && !(r.rt !== undefined && r.rt >= q.minRt)) return false
-    if (q.minMeta && !(r.meta !== undefined && r.meta >= q.minMeta)) return false
-    return true
+    return passesRatings(R.get(t))
   })
 
-  // Con filtri sui punteggi passano pochi titoli: carica altre pagine finché ce ne sono abbastanza
+  // Con filtri stretti passano pochi titoli: si caricano altre pagine finché ce ne sono abbastanza
   useEffect(() => {
-    if (ratingFilter && R.enabled && !R.limited && !loading && more && R.pending === 0 && visible.length < 12 && page < 6 && items.length) {
+    const ratingsSettled = !ratingActive || (R.pending === 0 && !R.limited)
+    if (!loading && more && ratingsSettled && visible.length < 12 && page < 10 && !q.actor) {
       load(JSON.parse(serverKey), page + 1)
     }
   })
@@ -298,6 +330,13 @@ export function Explore({ seen, views, active, request }: {
     setQ((c) => ({ ...c, ...p }))
   }
   const chips = activeChips(q)
+  const isFiltered = chips.length > 0 || activeView !== null || JSON.stringify(q.kinds) !== JSON.stringify(tmdb.emptyQuery.kinds)
+  const resetAll = () => {
+    setQ(tmdb.emptyQuery)
+    setActiveView(null)
+    setPhrase('')
+    setNl({ busy: false, err: '', info: '', notes: [] })
+  }
 
   async function runPhrase() {
     const text = phrase.trim()
@@ -324,8 +363,8 @@ export function Explore({ seen, views, active, request }: {
       <div className="row between">
         <h1 className="page-title">Esplora</h1>
         <div className="row">
-          <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le ricerche salvate"><Icon name="edit" size={18} /></button>
-          <button className={'btn' + (chips.length ? ' on' : '')} onClick={() => setFilters(true)}>
+          <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le ricerche salvate" data-tip="Gestisci le ricerche salvate"><Icon name="edit" size={18} /></button>
+          <button className={'btn' + (chips.length ? ' on' : '')} onClick={() => setFilters(true)} data-tip="Apri tutti i filtri">
             <Icon name="filter" size={18} /> Filtri{chips.length ? ` · ${chips.length}` : ''}
           </button>
         </div>
@@ -354,28 +393,36 @@ export function Explore({ seen, views, active, request }: {
         ))}
       </div>
 
-      {chips.length > 0 && (
+      {isFiltered && (
         <div className="row activechips" aria-label="Filtri attivi">
           {chips.map((c) => (
-            <button key={c.key} className="achip" onClick={() => set(c.clear)} aria-label={`Togli il filtro ${c.label}`}>
+            <button key={c.key} className="achip" onClick={() => set(c.clear)} aria-label={`Togli il filtro ${c.label}`} data-tip="Togli questo filtro">
               {c.label} <Icon name="x" size={12} />
             </button>
           ))}
-          <button className="link" onClick={() => setManage(true)}>Salva questa ricerca</button>
+          {chips.length > 0 && <button className="link" onClick={() => setManage(true)}>Salva questa ricerca</button>}
+          <button className="btn sm" onClick={resetAll} data-tip="Torna ai filtri di partenza"><Icon name="x" size={14} /> Azzera i filtri</button>
         </div>
       )}
       <div style={{ height: 14 }} />
 
       {err && <p className="err">{err}</p>}
+      {ratingFilter && !R.enabled && <p className="err">Per filtrare per IMDb, Rotten Tomatoes o Metacritic serve la chiave OMDb: inseriscila in Impostazioni. Intanto i filtri sui voti non si applicano.</p>}
       {ratingFilter && R.limited && <p className="err">Limite giornaliero OMDb raggiunto: i filtri sui punteggi usano solo i titoli già controllati.</p>}
-      {ratingFilter && R.pending > 0 && <p className="muted">Controllo i punteggi… ({R.pending})</p>}
+      {ratingActive && R.pending > 0 && <p className="muted">Controllo i punteggi… ({R.pending})</p>}
 
       {loading && items.length === 0 ? (
         <SkeletonGrid />
       ) : (
         <TitleGrid
           items={visible}
-          empty={<Empty title="Nessun titolo" text={ratingFilter && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'} />}
+          empty={
+            <Empty
+              title="Nessun titolo"
+              text={ratingActive && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'}
+              action={isFiltered ? <button className="btn gold" onClick={resetAll}>Azzera i filtri</button> : undefined}
+            />
+          }
         />
       )}
       {more && items.length > 0 && !q.actor && (

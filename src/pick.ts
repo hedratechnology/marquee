@@ -68,6 +68,9 @@ function baseParams(input: PickInput, type: tmdb.MediaType): Record<string, stri
   if (input.mine.length) {
     p.with_watch_providers = input.mine.join('|')
     p.with_watch_monetization_types = 'flatrate'
+  } else {
+    // solo titoli che si possono guardare in Italia (abbonamento, noleggio o acquisto)
+    p.with_watch_monetization_types = 'flatrate|free|ads|rent|buy'
   }
   const moodIds = MOODS.find((m) => m.id === input.mood)?.[type] ?? []
   let without: number[] = []

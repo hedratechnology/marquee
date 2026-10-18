@@ -26,7 +26,7 @@ function RateList({ titles, marks, setMark }: { titles: Title[]; marks: Record<s
         const m = marks[id]
         return (
           <li key={id}>
-            <button className="rthumb" onClick={() => open(t)} aria-label={`Dettagli di ${t.title}`}>
+            <button className="rthumb" onClick={() => open(t)} aria-label={`Dettagli di ${t.title}`} data-tip="Vedi i dettagli">
               {t.poster ? <img src={`${tmdb.IMG}/w154${t.poster}`} alt="" /> : <span>{t.title}</span>}
             </button>
             <div className="rinfo">

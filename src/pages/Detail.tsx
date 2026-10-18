@@ -51,7 +51,7 @@ export function Detail({ t, close }: { t: Title; close: () => void }) {
       <div ref={top} />
       <div className="detail-hero">
         {backdrop && <img src={`${tmdb.IMG}/w780${backdrop}`} alt="" />}
-        <button className="iconbtn close" onClick={close} aria-label="Chiudi"><Icon name="x" /></button>
+        <button className="iconbtn close" onClick={close} aria-label="Chiudi" data-tip="Chiudi"><Icon name="x" /></button>
         <div className="inner">
           {t.poster && <img src={`${tmdb.IMG}/w342${t.poster}`} alt="" />}
           <div>
