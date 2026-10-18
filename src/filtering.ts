@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as tmdb from './tmdb'
 import type { GenreEntry, MediaType, Query } from './tmdb'
-import { MOODS, kindTypes } from './tmdb'
+import { MOODS, genreIdFor, kindTypes } from './tmdb'
 import { loadAwardIndex } from './awards'
 import { useRatings } from './omdb'
 import type { Ratings } from './omdb'
@@ -40,7 +40,7 @@ export function matchesQuery(m: Matchable, q: Query, env: FilterEnv): boolean {
   }
   const entries = q.genres.map((n) => env.genres.find((g) => g.name === n)).filter((x): x is GenreEntry => !!x)
   if (entries.length) {
-    const has = entries.map((e) => m.genreIds.includes(e[m.type] ?? -1))
+    const has = entries.map((e) => m.genreIds.includes(genreIdFor(e, m.type) ?? -1))
     if (q.genreMode === 'any' ? !has.some(Boolean) : !has.every(Boolean)) return false
   }
   if (q.moods.length && !q.moods.some((mo) => (MOODS.find((x) => x.id === mo)?.[m.type] ?? []).some((g) => m.genreIds.includes(g)))) return false

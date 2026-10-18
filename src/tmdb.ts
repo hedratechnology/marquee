@@ -206,6 +206,12 @@ export async function searchPerson(q: string): Promise<{ id: number; name: strin
   return r.results.slice(0, 6).map((p) => ({ id: p.id, name: p.name }))
 }
 
+/** Generi che nelle serie hanno un altro nome: Thriller -> Mistero, Azione -> Action & Adventure, ecc. */
+const TV_EQUIV: Record<number, number> = { 53: 9648, 28: 10759, 12: 10759, 878: 10765, 14: 10765, 10752: 10768 }
+
+/** L'id di un genere per film o serie, con l'equivalente quando il genere esiste solo per i film. */
+export const genreIdFor = (e: GenreEntry, type: MediaType): number | undefined => e[type] ?? (type === 'tv' && e.movie ? TV_EQUIV[e.movie] : undefined)
+
 export interface GenreEntry {
   name: string
   movie?: number
@@ -278,7 +284,7 @@ const SORT_PARAM = (type: MediaType, s: Sort) =>
 async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEntry[]): Promise<{ items: Title[]; raw: number }> {
   // le miniserie "nascoste" tra le serie concluse non hanno senso se si cercano serie in corso
   if (spec.limited && q.status === 'ongoing') return { items: [], raw: 0 }
-  const gIds = q.genres.map((n) => genres.find((g) => g.name === n)?.[spec.type]).filter((x): x is number => !!x)
+  const gIds = q.genres.map((n) => { const e = genres.find((g) => g.name === n); return e && genreIdFor(e, spec.type) }).filter((x): x is number => !!x)
   // se i generi scelti non esistono per questo tipo (es. un genere solo da film) non c'è nulla da cercare
   if (q.genres.length && !gIds.length) return { items: [], raw: 0 }
   const moodIds = [...new Set(q.moods.flatMap((m) => MOODS.find((x) => x.id === m)?.[spec.type] ?? []))]
@@ -358,7 +364,7 @@ async function actorTitles(q: Query, genres: GenreEntry[]): Promise<Title[]> {
       if (seen.has(k) || !t.poster || !types.has(t.type)) return false
       seen.add(k)
       if (entries.length) {
-        const has = entries.map((e) => t.genreIds.includes(e[t.type] ?? -1))
+        const has = entries.map((e) => t.genreIds.includes(genreIdFor(e, t.type) ?? -1))
         if (q.genreMode === 'any' ? !has.some(Boolean) : !has.every(Boolean)) return false
       }
       if (q.yearFrom && t.year < q.yearFrom) return false
