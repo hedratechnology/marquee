@@ -5,7 +5,7 @@ export const REGION = 'IT'
 
 export type MediaType = 'movie' | 'tv'
 export type Kind = 'film' | 'series' | 'miniseries' | 'doc' | 'animation'
-export type Sort = 'popularity' | 'rating' | 'recent'
+export type Sort = 'popularity' | 'rating' | 'recent' | 'taste'
 export type Mood = 'light' | 'cozy' | 'intense' | 'mystery' | 'fun' | 'adventure'
 export type Monetization = 'any' | 'flatrate' | 'rent' | 'buy'
 
@@ -267,7 +267,7 @@ const SPECS: Record<Kind, Spec[]> = {
 }
 
 const SORT_PARAM = (type: MediaType, s: Sort) =>
-  s === 'popularity'
+  s === 'popularity' || s === 'taste'
     ? 'popularity.desc'
     : s === 'rating'
       ? 'vote_average.desc'
@@ -343,7 +343,7 @@ async function onlyLimited(titles: Title[]): Promise<Title[]> {
 }
 
 function sortTitles(list: Title[], s: Sort): Title[] {
-  const key = (t: Title) => (s === 'popularity' ? t.popularity : s === 'rating' ? t.rating : Date.parse(t.date) || 0)
+  const key = (t: Title) => (s === 'popularity' || s === 'taste' ? t.popularity : s === 'rating' ? t.rating : Date.parse(t.date) || 0)
   return [...list].sort((a, b) => key(b) - key(a))
 }
 

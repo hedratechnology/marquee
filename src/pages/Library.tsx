@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { TasteProfile } from './TasteProfile'
+import { Icon } from '../ui/icons'
 import type { Title } from '../tmdb'
 import type { ListName, Lists } from '../store'
 import { Chip, Empty, TitleGrid } from '../ui/components'
 import { TAGS, usePersonal } from '../personal'
 import type { Tag } from '../personal'
-import { useTaste } from '../ui/ctx'
 import { useFilters, useReportCount } from '../filters'
 import { matchesQuery, useFilterEnv } from '../filtering'
 import { requestRatings } from '../omdb'
@@ -25,29 +26,30 @@ const HELP: Record<ListName, string> = {
 }
 const ORDER: ListName[] = ['watchlist', 'favorites', 'seen', 'started', 'dropped', 'hidden']
 
-export function Library({ lists }: { lists: Lists }) {
-  const [tab, setTab] = useState<ListName>('watchlist')
+export type LibraryTab = ListName | 'taste'
+
+export function Library({ lists, tab, setTab }: { lists: Lists; tab: LibraryTab; setTab: (t: LibraryTab) => void }) {
   const [tag, setTag] = useState<Tag | null>(null)
   const p = usePersonal()
-  const { summary, taste } = useTaste()
   const { q } = useFilters()
   const env = useFilterEnv(q)
-  const byTag: Title[] = tab === 'watchlist' && tag ? lists.watchlist.filter((t) => p.tagsOf(t).includes(tag)) : lists[tab]
+  const listTab: ListName = tab === 'taste' ? 'watchlist' : tab
+  const byTag: Title[] = listTab === 'watchlist' && tag ? lists.watchlist.filter((t) => p.tagsOf(t).includes(tag)) : lists[listTab]
   const ratingFilter = !!(q.minImdb || q.minRt || q.minMeta)
   // con filtri sui voti servono i punteggi di tutti i titoli della lista
   useEffect(() => {
     if (ratingFilter) requestRatings(byTag)
   }, [ratingFilter, byTag])
   const items: Title[] = byTag.filter((t) => matchesQuery({ type: t.type, id: t.id, year: t.year, genreIds: t.genreIds ?? [], rating: t.rating }, q, env))
-  useReportCount(items.length, false, true)
+  useReportCount(tab === 'taste' ? null : items.length, false, true)
 
   return (
     <>
-      <h1 className="page-title">La mia lista</h1>
-      {taste.samples > 0 && (
-        <p className="lede"><b>Il tuo gusto.</b> {summary}</p>
-      )}
+      <h1 className="page-title">{tab === 'taste' ? 'Il tuo gusto' : 'La mia lista'}</h1>
       <div className="pills" role="tablist" aria-label="Liste" style={{ marginBottom: 18 }}>
+        <button role="tab" aria-selected={tab === 'taste'} className={'pill' + (tab === 'taste' ? ' on' : '')} onClick={() => setTab('taste')}>
+          <Icon name="spark" size={14} /> Il tuo gusto
+        </button>
         {ORDER.map((l) => (
           <button key={l} role="tab" aria-selected={tab === l} className={'pill' + (tab === l ? ' on' : '')} onClick={() => { setTab(l); setTag(null) }}>
             {LABEL[l]} · {lists[l].length}
@@ -66,7 +68,7 @@ export function Library({ lists }: { lists: Lists }) {
         </div>
       )}
 
-      <TitleGrid items={items} empty={<Empty icon={ICON[tab]} title={`${LABEL[tab]}: ancora vuota`} text={tag ? 'Nessun titolo con questa etichetta: aprine uno e scegli quando lo guardi.' : HELP[tab]} />} />
+      {tab === 'taste' ? <TasteProfile /> : <TitleGrid items={items} empty={<Empty icon={ICON[listTab]} title={`${LABEL[listTab]}: ancora vuota`} text={tag ? 'Nessun titolo con questa etichetta: aprine uno e scegli quando lo guardi.' : HELP[listTab]} />} />}
     </>
   )
 }

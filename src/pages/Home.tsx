@@ -6,10 +6,13 @@ import { Empty, PosterCard, Rail, TitleRail, num } from '../ui/components'
 import { Icon } from '../ui/icons'
 import { daysLabel } from '../ui/helpers'
 import { useFilters, useReportCount } from '../filters'
+import { usePersonal } from '../personal'
+import { useTaste } from '../ui/ctx'
+import { affinity, confidence } from '../taste'
 import { matchesQuery, useFilterEnv } from '../filtering'
 import { bestToTitle, useBest } from '../ui/data'
 
-export type Goto = 'pick' | 'library' | 'together' | 'best' | 'explore' | 'settings'
+export type Goto = 'pick' | 'library' | 'taste' | 'together' | 'best' | 'explore' | 'settings'
 
 interface ExpiringItem {
   type: tmdb.MediaType
@@ -125,33 +128,45 @@ function Entrance({ icon, title, text, onClick, accent }: { icon: string; title:
 
 export function Home({ favorites, seen, goto, listCount, active }: { favorites: Title[]; seen: Title[]; goto: (t: Goto) => void; listCount: number; active: boolean }) {
   const F = useFilters()
+  const { taste } = useTaste()
+  const personal = usePersonal()
   const env = useFilterEnv(F.q)
   const [expiringCount, setExpiringCount] = useState(0)
   const [recs, setRecs] = useState<Title[]>([])
   const best = useBest()
   const hasKey = !!tmdb.getKey()
 
+  // i consigli nascono da ciò che ami: preferiti e titoli per cui hai detto «ne voglio altri così», «bei personaggi», «ottima atmosfera»
   useEffect(() => {
-    const base = favorites.slice(0, 8)
-    if (!base.length || !hasKey) return
-    Promise.all(base.map((t) => tmdb.recommendations(t.type, t.id).catch(() => [] as Title[]))).then((all) => {
+    if (!hasKey) return
+    const seeds = new Map<string, { type: tmdb.MediaType; id: number; w: number }>()
+    for (const r of Object.values(personal.reactions)) {
+      const w = r.reactions.includes('more') ? 2 : r.reactions.some((x) => x === 'characters' || x === 'atmosphere') ? 1 : 0
+      if (w) seeds.set(`${r.type}:${r.id}`, { type: r.type, id: r.id, w })
+    }
+    for (const t of favorites) if (!seeds.has(`${t.type}:${t.id}`)) seeds.set(`${t.type}:${t.id}`, { type: t.type, id: t.id, w: 1 })
+    const base = [...seeds.values()].sort((a, b) => b.w - a.w).slice(0, 10)
+    if (!base.length) return
+    Promise.all(base.map((b) => tmdb.recommendations(b.type, b.id).then((r) => r.map((t) => ({ t, w: b.w }))).catch(() => []))).then((all) => {
       const score = new Map<string, { t: Title; n: number }>()
-      for (const t of all.flat()) {
+      for (const { t, w } of all.flat()) {
         const k = t.type + t.id
         const cur = score.get(k)
-        if (cur) cur.n++
-        else score.set(k, { t, n: 1 })
+        if (cur) cur.n += w
+        else score.set(k, { t, n: w })
       }
       const known = new Set([...favorites, ...seen].map((t) => t.type + t.id))
+      for (const r of Object.values(personal.reactions)) known.add(r.type + r.id)
       const out = [...score.values()]
-        .filter((x) => !known.has(x.t.type + x.t.id) && x.t.poster)
-        .sort((a, b) => b.n - a.n || b.t.rating - a.t.rating)
+        // si evitano i generi che hai dimostrato di non amare
+        .filter((x) => !known.has(x.t.type + x.t.id) && x.t.poster && affinity(x.t, taste) > -0.3)
+        .sort((a, b) => b.n + affinity(b.t, taste) - (a.n + affinity(a.t, taste)) || b.t.rating - a.t.rating)
         .slice(0, 18)
         .map((x) => x.t)
       setRecs(out)
       requestRatings(out)
     })
-  }, [favorites, seen, hasKey])
+  }, [favorites, seen, hasKey, personal.reactions, taste])
 
   const recsF = recs.filter((t) => matchesQuery(t, F.q, env))
   const bestF = (best?.items ?? []).filter((i) => matchesQuery({ type: i.type, id: i.id, year: i.year, genreIds: i.genreIds, rating: i.imdb ?? 0, lang: i.lang, imdb: i.imdb, rt: i.rt, meta: i.meta }, F.q, env))
@@ -179,6 +194,7 @@ export function Home({ favorites, seen, goto, listCount, active }: { favorites: 
 
       <div className="entrances">
         <Entrance accent icon="spark" title="Scegli per me" text="Umore, tempo e compagnia: tre proposte, con i motivi." onClick={() => goto('pick')} />
+        <Entrance icon="spark" title="Il tuo gusto" text={taste.samples + taste.reacted ? `Preciso al ${confidence(taste).pct}%: lascia una reazione per affinarlo.` : 'Lascia qualche reazione: imparo cosa ti piace davvero.'} onClick={() => goto('taste')} />
         <Entrance icon="bookmark" title="La mia lista" text={listCount ? `${listCount} titoli salvati, organizzati.` : 'Da vedere, preferiti, visti: tutto in ordine.'} onClick={() => goto('library')} />
       </div>
       <button className="banner" onClick={() => goto('together')}>

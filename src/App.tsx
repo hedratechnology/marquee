@@ -20,6 +20,7 @@ import { FilterStrip } from './pages/FilterStrip'
 import { ManageViews } from './pages/SavedSearches'
 import { Best } from './pages/Best'
 import { Library } from './pages/Library'
+import type { LibraryTab } from './pages/Library'
 import { SearchPage } from './pages/SearchPage'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
@@ -53,6 +54,7 @@ function Shell() {
   const [incoming, setIncoming] = useState<TogetherPayload | null>(incomingAtStart)
   const [sel, setSel] = useState<Title | null>(null)
   const [manageViews, setManageViews] = useState(false)
+  const [libTab, setLibTab] = useState<LibraryTab>('watchlist')
   const { lists, has, toggle, replace } = useListsStore()
   const views = useViews()
   const src = useSources()
@@ -131,7 +133,7 @@ function Shell() {
 
             <main>
               <div hidden={tab !== 'home'}>
-                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => go(t)} />
+                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => { if (t === 'taste') { setLibTab('taste'); go('library') } else go(t) }} />
               </div>
               <div hidden={tab !== 'explore'}>
                 <Explore active={tab === 'explore'} />
@@ -144,7 +146,7 @@ function Shell() {
               )}
               {tab === 'together' && <TogetherPage key={incoming ? 'in' : 'out'} lists={lists} incoming={incoming} onExit={() => { setIncoming(null); go('home') }} />}
               {tab === 'best' && <Best seen={lists.seen} sources={src.sources} />}
-              {tab === 'library' && <Library lists={lists} />}
+              {tab === 'library' && <Library lists={lists} tab={libTab} setTab={setLibTab} />}
               {tab === 'search' && <SearchPage onApplyQuery={applyQuery} />}
               {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} src={src} />}
             </main>

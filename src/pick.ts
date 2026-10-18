@@ -199,6 +199,10 @@ export function explain(d: Detail, input: PickInput, ctx: PickContext): string[]
   } else if (d.rent.length || d.buy.length) out.push('Non è incluso in un abbonamento: si può noleggiare o comprare.')
   else out.push('Non risulta in streaming in Italia in questo momento.')
 
+  // cosa ho imparato dalle tue reazioni
+  if (ctx.taste.slowAverse && d.type === 'movie' && d.runtimeMin && d.runtimeMin <= 115) out.push('Non è lungo né lento da partire: tengo conto che i ritmi lenti non ti conquistano.')
+  if (ctx.taste.signals.characters >= 2 && (d.genreIds ?? []).includes(18)) out.push('È una storia di personaggi, come quelli che ti sono piaciuti.')
+
   // voti e classificazione
   const votes: string[] = []
   if (ratings?.imdb !== undefined) votes.push(`IMDb ${String(ratings.imdb).replace('.', ',')}`)
@@ -230,6 +234,16 @@ export async function choose(input: PickInput, ctx: PickContext): Promise<PickRe
   )
   const ok = details.filter((x): x is { c: { title: Title; score: number }; d: Detail } => !!x && fitsTime(x.d, input.time))
   const built: Pick[] = ok.map(({ c, d }) => ({ title: c.title, detail: d, score: c.score, reasons: explain(d, input, ctx) }))
+
+  // il gusto affina l'ordine: ritmo, personaggi, atmosfera
+  const sig = ctx.taste.signals
+  for (const b of built) {
+    const g = b.title.genreIds ?? []
+    if (ctx.taste.slowAverse && b.detail.type === 'movie' && (b.detail.runtimeMin ?? 0) > 140) b.score -= 0.1
+    if (sig.characters >= 2 && g.includes(18)) b.score += 0.05
+    if (sig.atmosphere >= 2 && [9648, 878, 14].some((x) => g.includes(x))) b.score += 0.04
+  }
+  built.sort((a, b) => b.score - a.score)
 
   // varietà: si evita di proporre tre titoli con lo stesso genere principale
   const picks: Pick[] = []

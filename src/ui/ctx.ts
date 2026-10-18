@@ -24,7 +24,7 @@ export interface TasteApi {
   summary: string
 }
 export const TasteCtx = createContext<TasteApi>({
-  taste: { genre: {}, moviePref: 0.5, gentle: false, slowAverse: false, samples: 0, topGenreIds: [] },
+  taste: { genre: {}, moviePref: 0.5, gentle: false, slowAverse: false, samples: 0, topGenreIds: [], signals: { more: 0, characters: 0, atmosphere: 0, slow: 0, ending: 0, violent: 0 }, reacted: 0 },
   summary: '',
 })
 export const useTaste = () => useContext(TasteCtx)

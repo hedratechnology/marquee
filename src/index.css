@@ -649,3 +649,25 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .fbar .chip:not(.on), .fbar .seg2 button:not(.on) { color: var(--text); }
 .fbar .chip:not(.on):hover, .fbar .tile:not(.on):hover, .fbar .seg2 button:not(.on):hover { border-color: var(--c); }
 .fbar .tile.on::after { content: '✓'; margin-left: auto; font-weight: 800; padding-left: 6px; }
+
+/* ---------- il tuo gusto ---------- */
+.tastegrid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 880px) { .tastegrid { grid-template-columns: 1.1fr 0.9fr; } }
+.tastegrid .cardbox, .cardbox + .cardbox { margin: 0 0 14px; }
+.confrow { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.confrow b { font: 600 1.1rem var(--display); font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+.meter { flex: 1; height: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.09); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #a78bfa, #34d399); transition: width 0.4s ease; }
+.insights { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.insights li { position: relative; padding-left: 20px; font-size: 0.92rem; }
+.insights li::before { content: ''; position: absolute; left: 2px; top: 0.55em; width: 7px; height: 7px; border-radius: 50%; background: #a78bfa; }
+.gbars { display: grid; gap: 9px; margin-top: 8px; }
+.gbar { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 12px; font-size: 0.86rem; }
+.gtrack { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.gtrack i { display: block; height: 100%; border-radius: 4px; }
+.tlist { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 12px; }
+.trow { display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: start; padding-top: 12px; border-top: 1px solid var(--line); }
+.trow:first-child { border-top: 0; padding-top: 0; }
+.trow .rinfo b { display: block; margin-bottom: 8px; font-weight: 600; }
+.trow .row { gap: 6px; margin: 0; }
+.trow .chip { height: 30px; font-size: 0.78rem; }

@@ -7,7 +7,9 @@ import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
 import { useFilters, useReportCount } from '../filters'
 import { Empty, SkeletonGrid, TitleGrid } from '../ui/components'
-import { useLists } from '../ui/ctx'
+import { useLists, useTaste } from '../ui/ctx'
+import { useGenres } from '../ui/data'
+import { affinity, matchingGenres } from '../taste'
 import { Icon } from '../ui/icons'
 import { errText } from '../ui/helpers'
 
@@ -19,6 +21,8 @@ export function Explore({ active }: { active: boolean }) {
   const { q, setQuery, reset, note, isFiltered } = F
   const personal = usePersonal()
   const { lists } = useLists()
+  const { taste } = useTaste()
+  const genreList = useGenres()
   const mine = personal.prefs.providers
   const [items, setItems] = useState<Title[]>([])
   const [page, setPage] = useState(1)
@@ -91,7 +95,17 @@ export function Explore({ active }: { active: boolean }) {
     return passesRatings(R.get(t))
   })
   const needle = plain(textQ)
-  const shown = mode === 'results' && needle ? visible.filter((t) => plain(t.title).includes(needle)) : visible
+  const filtered = mode === 'results' && needle ? visible.filter((t) => plain(t.title).includes(needle)) : visible
+  // "Per il mio gusto": si riordinano i titoli caricati per affinità e si dice perché
+  const shown =
+    q.sort === 'taste' && taste.samples
+      ? [...filtered]
+          .sort((a, b) => affinity(b, taste) - affinity(a, taste))
+          .map((t) => {
+            const why = matchingGenres(t, taste, genreList)
+            return why.length ? { ...t, note: `Per te: ${why.join(' · ')}` } : t
+          })
+      : filtered
   useReportCount(catalog ? catalog.items.length : shown.length, loading || !!catalog?.busy, active)
 
   // Con filtri stretti passano pochi titoli: si caricano altre pagine finché ce ne sono abbastanza

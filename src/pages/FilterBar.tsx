@@ -322,7 +322,7 @@ export function FilterBar({ views, onManage }: { views: ViewsApi; onManage: () =
       <>
         <Block title="Ordina per">
           <Seg label="Ordine" value={q.sort} onChange={(v) => set({ sort: v })}
-            options={[{ v: 'popularity', label: 'Più popolari' }, { v: 'rating', label: 'Voto più alto' }, { v: 'recent', label: 'Più recenti' }]} />
+            options={[{ v: 'popularity', label: 'Più popolari' }, { v: 'taste', label: 'Per il mio gusto' }, { v: 'rating', label: 'Voto più alto' }, { v: 'recent', label: 'Più recenti' }]} />
         </Block>
         <Block title="Cosa nascondere">
           <div className="switches">
