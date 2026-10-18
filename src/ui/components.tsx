@@ -121,8 +121,8 @@ export function SkeletonGrid({ n = 12 }: { n?: number }) {
   )
 }
 
-export function Sheet({ title, onClose, children, drawer, className = '' }: {
-  title?: string; onClose: () => void; children: ReactNode; drawer?: boolean; className?: string
+export function Sheet({ title, onClose, children, drawer, className = '', foot }: {
+  title?: string; onClose: () => void; children: ReactNode; drawer?: boolean; className?: string; foot?: ReactNode
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -136,14 +136,21 @@ export function Sheet({ title, onClose, children, drawer, className = '' }: {
   }, [onClose])
   return (
     <div className={'overlay' + (drawer ? ' drawer' : '')} onClick={onClose}>
-      <div className={'panel ' + className} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={'panel ' + className + (foot ? ' has-foot' : '')} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         {title && (
           <div className="panel-head">
             <h2>{title}</h2>
             <button className="iconbtn" onClick={onClose} aria-label="Chiudi" data-tip="Chiudi"><Icon name="x" /></button>
           </div>
         )}
-        {children}
+        {foot ? (
+          <>
+            <div className="panel-body">{children}</div>
+            <div className="panel-foot">{foot}</div>
+          </>
+        ) : (
+          children
+        )}
       </div>
     </div>
   )

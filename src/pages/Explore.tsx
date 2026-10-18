@@ -5,7 +5,7 @@ import { getOmdbKey, requestRatings, useRatings } from '../omdb'
 import type { Ratings } from '../omdb'
 import type { useViews } from '../views'
 import { MAX_VIEWS } from '../views'
-import { aiErrorText, getAiKey, nlToQuery, parseQuery } from '../ai'
+import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
 import { Chip, Empty, Range, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
 import { Icon } from '../ui/icons'
@@ -75,155 +75,160 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
   }
 
   return (
-    <Sheet title="Filtri" onClose={onClose} drawer>
-      <div className="group">
-        <span className="eyebrow">Tipo</span>
-        <div className="row">
-          {tmdb.KINDS.map((k) => (
-            <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
-          ))}
-        </div>
-      </div>
-      <div className="group">
-        <span className="eyebrow">Umore</span>
-        <div className="row">
-          {tmdb.MOODS.map((m) => <Chip key={m.id} on={q.moods.includes(m.id)} onClick={() => set({ moods: toggleIn<Mood>(q.moods, m.id) })}>{m.label}</Chip>)}
-        </div>
-        <p className="muted" style={{ marginTop: 8 }}>L'umore è una stima basata sui generi.</p>
-      </div>
-      <div className="group">
-        <span className="eyebrow">Generi</span>
-        <div className="row">
-          {options.map((g) => <Chip key={g.name} on={q.genres.includes(g.name)} onClick={() => set({ genres: toggleIn(q.genres, g.name) })}>{g.name}</Chip>)}
-        </div>
-        {q.genres.length > 1 && (
-          <div className="row" style={{ marginTop: 10 }}>
-            <Chip on={q.genreMode === 'all'} onClick={() => set({ genreMode: 'all' })}>Tutti insieme</Chip>
-            <Chip on={q.genreMode === 'any'} onClick={() => set({ genreMode: 'any' })}>Almeno uno</Chip>
-          </div>
-        )}
-      </div>
-      <div className="group">
-        <span className="eyebrow">Dove guardarlo, in Italia</span>
-        <div className="row">
-          {tmdb.PROVIDERS.map((p) => <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggleIn(q.providers, p.id) })}>{p.name}</Chip>)}
-        </div>
-        <div className="row" style={{ marginTop: 10 }}>
-          {hasMine ? (
-            <Chip on={q.onlyMine} onClick={() => set({ onlyMine: !q.onlyMine })}>Solo i miei abbonamenti</Chip>
-          ) : (
-            <span className="muted">Indica i tuoi abbonamenti in Impostazioni per usarli come filtro.</span>
-          )}
-          <select className="field" value={q.monetization} onChange={(e) => set({ monetization: e.target.value as Query['monetization'] })} aria-label="Disponibilità">
-            <option value="any">Qualsiasi disponibilità</option>
-            <option value="flatrate">Incluso nell'abbonamento</option>
-            <option value="rent">Da noleggiare</option>
-            <option value="buy">Da comprare</option>
-          </select>
-        </div>
-        <div className="row" style={{ marginTop: 10 }}>
-          <Chip on={q.onlyItaly} onClick={() => set({ onlyItaly: !q.onlyItaly })}>Solo disponibili in Italia</Chip>
-        </div>
-        <p className="muted" style={{ marginTop: 8 }}>Disponibili in Italia = in abbonamento, a noleggio o da comprare: di solito doppiati o sottotitolati in italiano.</p>
-        {q.actor && q.providers.length > 0 && <p className="muted">Con un attore selezionato le piattaforme non si applicano.</p>}
-      </div>
-      <div className="group">
-        <span className="eyebrow">Punteggi minimi</span>
-        {!getOmdbKey() && <p className="muted">Per IMDb, Rotten Tomatoes e Metacritic inserisci la chiave OMDb in Impostazioni.</p>}
-        <Range label="IMDb" value={q.minImdb} min={0} max={9.5} step={0.1} onChange={(v) => set({ minImdb: v })} />
-        <Range label="Rotten Tomatoes" value={q.minRt} min={0} max={100} step={5} suffix="%" onChange={(v) => set({ minRt: v })} />
-        <Range label="Metacritic" value={q.minMeta} min={0} max={100} step={5} onChange={(v) => set({ minMeta: v })} />
-        <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
-        {(q.minImdb > 0 || q.minRt > 0 || q.minMeta > 0) && (
-          <>
-            <div className="row" style={{ marginTop: 10 }}>
-              <Chip on={q.strictRatings} onClick={() => set({ strictRatings: !q.strictRatings })}>Servono tutti i voti</Chip>
+    <Sheet
+      title="Filtri"
+      onClose={onClose}
+      className="filters"
+      foot={
+        <>
+          <button className="btn" onClick={reset}>Azzera i filtri</button>
+          <button className="btn gold" onClick={onClose}>Mostra {count} titoli</button>
+        </>
+      }
+    >
+      <div className="fgrid">
+        <div className="fcol">
+          <div className="group">
+            <span className="eyebrow">Tipo</span>
+            <div className="row">
+              {tmdb.KINDS.map((k) => (
+                <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
+              ))}
             </div>
-            <p className="muted" style={{ marginTop: 8 }}>
-              Rotten Tomatoes e Metacritic spesso mancano per serie e titoli recenti. Di solito contano solo i voti che esistono; con questa opzione un titolo senza uno dei voti richiesti viene escluso.
-            </p>
-          </>
-        )}
-      </div>
-      <div className="group">
-        <span className="eyebrow">Durata e ritmo</span>
-        <div className="row">
-          <select className="field" value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })} aria-label="Durata dei film">
-            <option value={0}>Film: ogni durata</option>
-            <option value={90}>Film sotto 90 min</option>
-            <option value={100}>Film sotto 100 min</option>
-            <option value={120}>Film sotto 2 ore</option>
-            <option value={150}>Film sotto 2 ore e mezza</option>
-          </select>
-          <select className="field" value={q.maxEpisode ?? 0} onChange={(e) => set({ maxEpisode: +e.target.value || undefined })} aria-label="Durata degli episodi">
-            <option value={0}>Episodi: ogni durata</option>
-            <option value={30}>Episodi sotto 30 min</option>
-            <option value={45}>Episodi sotto 45 min</option>
-            <option value={60}>Episodi sotto 1 ora</option>
-          </select>
-        </div>
-        {hasSeries && (
-          <div className="row" style={{ marginTop: 10 }}>
-            <Chip on={q.status === 'ended'} onClick={() => set({ status: q.status === 'ended' ? undefined : 'ended' })}>Serie concluse</Chip>
-            <Chip on={q.status === 'ongoing'} onClick={() => set({ status: q.status === 'ongoing' ? undefined : 'ongoing' })}>Serie in corso</Chip>
           </div>
-        )}
-        <div className="row" style={{ marginTop: 10 }}>
-          <Chip on={q.gentle} onClick={() => set({ gentle: !q.gentle })}>Poco violento</Chip>
-        </div>
-        <p className="muted" style={{ marginTop: 8 }}>«Poco violento» esclude horror e guerra e, per i film, le classificazioni più dure: è una stima.</p>
-      </div>
-      <div className="group">
-        <span className="eyebrow">Paese, lingua, anno</span>
-        <div className="row">
-          <select className="field" value={q.country ?? ''} onChange={(e) => set({ country: e.target.value || undefined })} aria-label="Paese">
-            <option value="">Ogni paese</option>
-            {tmdb.COUNTRIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-          <select className="field" value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })} aria-label="Lingua">
-            <option value="">Ogni lingua</option>
-            {tmdb.LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-          </select>
-        </div>
-        <div className="row" style={{ marginTop: 10 }}>
-          <input className="field" type="number" inputMode="numeric" placeholder="Dal" value={q.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value || undefined })} />
-          <input className="field" type="number" inputMode="numeric" placeholder="Al" value={q.yearTo ?? ''} onChange={(e) => set({ yearTo: e.target.value || undefined })} />
-        </div>
-      </div>
-      <div className="group">
-        <span className="eyebrow">Persone</span>
-        <div className="row">
-          {q.actor ? (
-            <button className="btn on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>Con {q.actor.name} <Icon name="x" size={14} /></button>
-          ) : (
-            <input className="field" placeholder="Attore o attrice…" value={actorQ} onChange={(e) => find(e.target.value, 'actor')} />
-          )}
-          {q.director ? (
-            <button className="btn on" onClick={() => { set({ director: undefined }); setDirQ('') }}>Regia di {q.director.name} <Icon name="x" size={14} /></button>
-          ) : (
-            <input className="field" placeholder="Regista (solo film)…" value={dirQ} onChange={(e) => find(e.target.value, 'director')} />
-          )}
-        </div>
-        {sugg.length > 0 && (
-          <div className="row" style={{ marginTop: 10 }}>
-            {sugg.map((s) => <Chip key={s.id} onClick={() => { set(suggFor === 'actor' ? { actor: s } : { director: s }); setSugg([]) }}>{s.name}</Chip>)}
+          <div className="group">
+            <span className="eyebrow">Umore (stima dai generi)</span>
+            <div className="row">
+              {tmdb.MOODS.map((m) => <Chip key={m.id} on={q.moods.includes(m.id)} onClick={() => set({ moods: toggleIn<Mood>(q.moods, m.id) })}>{m.label}</Chip>)}
+            </div>
           </div>
-        )}
-      </div>
-      <div className="group">
-        <span className="eyebrow">Ordina e nascondi</span>
-        <div className="row">
-          <select className="field" value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
-            <option value="popularity">Più popolari</option>
-            <option value="rating">Voto più alto</option>
-            <option value="recent">Più recenti</option>
-          </select>
-          <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
+          <div className="group">
+            <span className="eyebrow">Generi</span>
+            <div className="row">
+              {options.map((g) => <Chip key={g.name} on={q.genres.includes(g.name)} onClick={() => set({ genres: toggleIn(q.genres, g.name) })}>{g.name}</Chip>)}
+            </div>
+            {q.genres.length > 1 && (
+              <div className="row" style={{ marginTop: 8 }}>
+                <Chip on={q.genreMode === 'all'} onClick={() => set({ genreMode: 'all' })}>Tutti insieme</Chip>
+                <Chip on={q.genreMode === 'any'} onClick={() => set({ genreMode: 'any' })}>Almeno uno</Chip>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="row between" style={{ marginTop: 8 }}>
-        <button className="btn" onClick={reset}>Azzera</button>
-        <button className="btn gold" onClick={onClose}>Mostra {count} titoli</button>
+
+        <div className="fcol">
+          <div className="group">
+            <span className="eyebrow">Dove e come guardarlo</span>
+            <div className="row">
+              <Chip on={q.onlyItaly} onClick={() => set({ onlyItaly: !q.onlyItaly })}>Guardabili in italiano</Chip>
+              {hasMine ? (
+                <Chip on={q.onlyMine} onClick={() => set({ onlyMine: !q.onlyMine })}>Solo i miei abbonamenti</Chip>
+              ) : null}
+            </div>
+            <p className="muted hint">Titoli disponibili in Italia (abbonamento, noleggio o acquisto): di solito doppiati o sottotitolati. Non si può filtrare per audio o sottotitoli.</p>
+            <div className="row" style={{ marginTop: 10 }}>
+              {tmdb.PROVIDERS.map((p) => <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggleIn(q.providers, p.id) })}>{p.name}</Chip>)}
+            </div>
+            <div className="row" style={{ marginTop: 10 }}>
+              <select className="field" value={q.monetization} onChange={(e) => set({ monetization: e.target.value as Query['monetization'] })} aria-label="Disponibilità">
+                <option value="any">Abbonamento, noleggio o acquisto</option>
+                <option value="flatrate">Solo incluso nell'abbonamento</option>
+                <option value="rent">Solo da noleggiare</option>
+                <option value="buy">Solo da comprare</option>
+              </select>
+            </div>
+            {!hasMine && <p className="muted hint">Indica i tuoi abbonamenti in Impostazioni per filtrare «solo i miei».</p>}
+            {q.actor && q.providers.length > 0 && <p className="muted hint">Con un attore selezionato le piattaforme non si applicano.</p>}
+          </div>
+          <div className="group">
+            <span className="eyebrow">Punteggi minimi</span>
+            {!getOmdbKey() && <p className="muted hint">Per IMDb, Rotten Tomatoes e Metacritic serve la chiave OMDb (Impostazioni).</p>}
+            <Range label="IMDb" value={q.minImdb} min={0} max={9.5} step={0.1} onChange={(v) => set({ minImdb: v })} />
+            <Range label="Rotten Tomatoes" value={q.minRt} min={0} max={100} step={5} suffix="%" onChange={(v) => set({ minRt: v })} />
+            <Range label="Metacritic" value={q.minMeta} min={0} max={100} step={5} onChange={(v) => set({ minMeta: v })} />
+            <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
+            {(q.minImdb > 0 || q.minRt > 0 || q.minMeta > 0) && (
+              <div className="row" style={{ marginTop: 8 }}>
+                <Chip on={q.strictRatings} onClick={() => set({ strictRatings: !q.strictRatings })}>Servono tutti i voti</Chip>
+                <span className="muted hint" style={{ flex: 1, minWidth: 160 }}>Rotten Tomatoes e Metacritic mancano spesso per serie e titoli recenti: di solito contano solo i voti che esistono.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="fcol">
+          <div className="group">
+            <span className="eyebrow">Durata e ritmo</span>
+            <div className="row">
+              <select className="field" value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })} aria-label="Durata dei film">
+                <option value={0}>Film: ogni durata</option>
+                <option value={90}>Film sotto 90 min</option>
+                <option value={100}>Film sotto 100 min</option>
+                <option value={120}>Film sotto 2 ore</option>
+                <option value={150}>Film sotto 2 ore e mezza</option>
+              </select>
+              <select className="field" value={q.maxEpisode ?? 0} onChange={(e) => set({ maxEpisode: +e.target.value || undefined })} aria-label="Durata degli episodi">
+                <option value={0}>Episodi: ogni durata</option>
+                <option value={30}>Episodi sotto 30 min</option>
+                <option value={45}>Episodi sotto 45 min</option>
+                <option value={60}>Episodi sotto 1 ora</option>
+              </select>
+            </div>
+            <div className="row" style={{ marginTop: 8 }}>
+              {hasSeries && <Chip on={q.status === 'ended'} onClick={() => set({ status: q.status === 'ended' ? undefined : 'ended' })}>Serie concluse</Chip>}
+              {hasSeries && <Chip on={q.status === 'ongoing'} onClick={() => set({ status: q.status === 'ongoing' ? undefined : 'ongoing' })}>Serie in corso</Chip>}
+              <Chip on={q.gentle} onClick={() => set({ gentle: !q.gentle })}>Poco violento</Chip>
+            </div>
+          </div>
+          <div className="group">
+            <span className="eyebrow">Origine e anno</span>
+            <div className="row">
+              <select className="field" value={q.country ?? ''} onChange={(e) => set({ country: e.target.value || undefined })} aria-label="Paese di produzione">
+                <option value="">Paese: tutti</option>
+                {tmdb.COUNTRIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              <select className="field" value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })} aria-label="Lingua originale">
+                <option value="">Lingua originale: qualsiasi</option>
+                {tmdb.LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+              </select>
+            </div>
+            <div className="row" style={{ marginTop: 8 }}>
+              <input className="field" type="number" inputMode="numeric" placeholder="Dal" value={q.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value || undefined })} />
+              <input className="field" type="number" inputMode="numeric" placeholder="Al" value={q.yearTo ?? ''} onChange={(e) => set({ yearTo: e.target.value || undefined })} />
+            </div>
+          </div>
+          <div className="group">
+            <span className="eyebrow">Persone</span>
+            <div className="row">
+              {q.actor ? (
+                <button className="btn sm on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>Con {q.actor.name} <Icon name="x" size={14} /></button>
+              ) : (
+                <input className="field" placeholder="Attore o attrice…" value={actorQ} onChange={(e) => find(e.target.value, 'actor')} />
+              )}
+              {q.director ? (
+                <button className="btn sm on" onClick={() => { set({ director: undefined }); setDirQ('') }}>Regia di {q.director.name} <Icon name="x" size={14} /></button>
+              ) : (
+                <input className="field" placeholder="Regista (solo film)…" value={dirQ} onChange={(e) => find(e.target.value, 'director')} />
+              )}
+            </div>
+            {sugg.length > 0 && (
+              <div className="row" style={{ marginTop: 8 }}>
+                {sugg.map((s) => <Chip key={s.id} onClick={() => { set(suggFor === 'actor' ? { actor: s } : { director: s }); setSugg([]) }}>{s.name}</Chip>)}
+              </div>
+            )}
+          </div>
+          <div className="group">
+            <span className="eyebrow">Ordina e nascondi</span>
+            <div className="row">
+              <select className="field" value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
+                <option value="popularity">Più popolari</option>
+                <option value="rating">Voto più alto</option>
+                <option value="recent">Più recenti</option>
+              </select>
+              <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
+            </div>
+          </div>
+        </div>
       </div>
     </Sheet>
   )
@@ -347,9 +352,7 @@ export function Explore({ seen, views, active, request }: {
     }
     setNl({ busy: true, err: '', info: '', notes: [] })
     try {
-      const genres = await tmdb.genreList()
-      const parsed = await parseQuery(text, genres, personal.prefs.aiModel)
-      const applied = await nlToQuery(parsed, genres, mine)
+      const applied = await nlSearch(text, personal.prefs.aiModel, mine)
       setQ(applied.query)
       setActiveView(null)
       setNl({ busy: false, err: '', info: applied.summary, notes: applied.notes })
@@ -371,8 +374,10 @@ export function Explore({ seen, views, active, request }: {
       </div>
 
       <form className="nlbox" onSubmit={(e) => { e.preventDefault(); runPhrase() }}>
-        <Icon name="spark" size={18} />
-        <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Descrivi cosa vuoi: «una serie misteriosa, poco violenta, episodi brevi»" aria-label="Descrivi cosa vuoi vedere" />
+        <span className="aibadge" data-tip="Descrivi in una frase quello che cerchi: l'IA imposta i filtri per te">
+          <Icon name="spark" size={14} /> Cerca con l'IA
+        </span>
+        <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="es. una serie misteriosa, poco violenta, episodi brevi" aria-label="Descrivi cosa vuoi vedere" />
         <button className="btn gold sm" type="submit" disabled={nl.busy || !phrase.trim()}>{nl.busy ? 'Leggo…' : 'Cerca'}</button>
       </form>
       {nl.err && <p className="err">{nl.err}</p>}

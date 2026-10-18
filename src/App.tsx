@@ -33,8 +33,8 @@ const NAV: { id: Tab; label: string; icon: string }[] = [
 ]
 
 /** Sezioni raggiunte dalla home: nel menu resta evidenziata la Home. */
-const NAV_OF: Record<Tab, Tab> = {
-  home: 'home', pick: 'home', like: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', search: 'home', settings: 'home',
+const NAV_OF: Record<Tab, Tab | null> = {
+  home: 'home', pick: 'home', like: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', search: null, settings: null,
 }
 
 function readIncoming(): TogetherPayload | null {
@@ -45,6 +45,8 @@ function readIncoming(): TogetherPayload | null {
 function Shell() {
   const incomingAtStart = useMemo(readIncoming, [])
   const [tab, setTab] = useState<Tab>(incomingAtStart ? 'together' : tmdb.getKey() ? 'home' : 'settings')
+  // schermata da cui si è aperto Cerca o Impostazioni: un secondo tocco sull'icona ci riporta lì
+  const [back, setBack] = useState<Tab>('home')
   const [incoming, setIncoming] = useState<TogetherPayload | null>(incomingAtStart)
   const [sel, setSel] = useState<Title | null>(null)
   const [request, setRequest] = useState<{ id: number; query: Query; info?: string } | null>(null)
@@ -73,6 +75,11 @@ function Shell() {
   }, [])
 
   const go = (t: Tab) => {
+    const overlay = (x: Tab) => x === 'settings' || x === 'search'
+    if (overlay(t)) {
+      if (tab === t) t = back
+      else if (!overlay(tab)) setBack(tab)
+    }
     setTab(t)
     window.scrollTo({ top: 0 })
   }
@@ -98,8 +105,10 @@ function Shell() {
                 ))}
               </nav>
               <span className="spacer" />
-              <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip="Cerca un titolo"><Icon name="search" size={19} /></button>
-              <button className={'iconbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip="Impostazioni: chiavi, abbonamenti, backup"><Icon name="sliders" size={19} /></button>
+              <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip={tab === 'search' ? 'Torna alla schermata precedente' : 'Cerca un titolo o descrivilo con l\'IA'}><Icon name="search" size={19} /></button>
+              <button className={'hbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip={tab === 'settings' ? 'Torna alla schermata precedente' : 'Impostazioni: abbonamenti, chiavi, IA, backup'}>
+                <Icon name="gear" size={19} /><span>Impostazioni</span>
+              </button>
             </header>
 
             <main>
@@ -124,7 +133,7 @@ function Shell() {
               {tab === 'together' && <TogetherPage key={incoming ? 'in' : 'out'} lists={lists} incoming={incoming} onExit={() => { setIncoming(null); go('home') }} />}
               {tab === 'best' && <Best seen={lists.seen} sources={src.sources} />}
               {tab === 'library' && <Library lists={lists} />}
-              {tab === 'search' && <SearchPage />}
+              {tab === 'search' && <SearchPage onApplyQuery={applyQuery} />}
               {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} src={src} />}
             </main>
           </div>

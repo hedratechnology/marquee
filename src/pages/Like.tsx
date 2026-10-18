@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as tmdb from '../tmdb'
 import type { Query, Title } from '../tmdb'
-import { aiErrorText, getAiKey, nlToQuery, parseQuery } from '../ai'
+import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
 import { computeTaste, affinity } from '../taste'
 import type { Lists } from '../store'
@@ -83,9 +83,7 @@ export function Like({ lists, onApplyQuery }: { lists: Lists; onApplyQuery: (q: 
     }
     setNl({ busy: true, err: '' })
     try {
-      const g = await tmdb.genreList()
-      const parsed = await parseQuery(text, g, personal.prefs.aiModel)
-      const applied = await nlToQuery(parsed, g, personal.prefs.providers)
+      const applied = await nlSearch(text, personal.prefs.aiModel, personal.prefs.providers)
       setNl({ busy: false, err: '' })
       onApplyQuery(applied.query, [applied.summary, ...applied.notes].join(' '))
     } catch (e) {

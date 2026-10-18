@@ -196,6 +196,13 @@ export async function nlToQuery(nl: NlQuery, genres: GenreEntry[], mine: number[
   return { query: q, summary: nl.summary, notes }
 }
 
+/** Dalla frase ai filtri pronti per Esplora, in un solo passaggio. */
+export async function nlSearch(phrase: string, model: string, mine: number[]): Promise<NlApplied> {
+  const genres = await tmdb.genreList()
+  const parsed = await parseQuery(phrase, genres, model)
+  return nlToQuery(parsed, genres, mine)
+}
+
 // ---------------------------------------------------------------- scheda senza spoiler
 
 export interface Blurb {
