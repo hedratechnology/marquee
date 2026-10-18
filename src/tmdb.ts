@@ -1,3 +1,4 @@
+import { awardLabel, loadAwards } from './awards'
 const API = 'https://api.themoviedb.org/3'
 export const IMG = 'https://image.tmdb.org/t/p'
 export const REGION = 'IT'
@@ -38,6 +39,8 @@ export interface Title {
   popularity: number
   genreIds: number[]
   overview: string
+  /** annotazione mostrata sotto il titolo (es. i premi vinti) */
+  note?: string
 }
 
 export interface Provider {
@@ -76,6 +79,8 @@ export interface Query {
   /** solo titoli che si possono guardare in Italia (abbonamento, noleggio o acquisto) */
   onlyItaly: boolean
   onlyMine: boolean
+  /** chiavi dei premi vinti (vedi awards.ts): solo titoli premiati */
+  awards: string[]
   actor?: { id: number; name: string }
   director?: { id: number; name: string }
   country?: string
@@ -103,6 +108,7 @@ export const emptyQuery: Query = {
   monetization: 'any',
   onlyItaly: true,
   onlyMine: false,
+  awards: [],
   minTmdb: 0,
   minImdb: 0,
   minRt: 0,
@@ -362,9 +368,51 @@ async function actorTitles(q: Query, genres: GenreEntry[]): Promise<Title[]> {
     })
 }
 
+/** Titoli premiati (dataset da Wikidata): si filtra qui perché TMDB non conosce i premi. */
+async function awardTitles(q: Query, genres: GenreEntry[]): Promise<Title[]> {
+  const file = await loadAwards()
+  if (!file) throw new Error('AWARDS_MISSING')
+  const types = new Set(kindTypes(q.kinds))
+  const onlyDocAnim = q.kinds.every((k) => k === 'doc' || k === 'animation')
+  const wantedGenres = q.kinds.flatMap((k) => (k === 'doc' ? [99] : k === 'animation' ? [16] : []))
+  const entries = q.genres.map((n) => genres.find((g) => g.name === n)).filter((x): x is GenreEntry => !!x)
+  const out = file.items
+    .filter((i) => {
+      if (!q.awards.some((k) => k in i.awards)) return false
+      if (!types.has(i.type)) return false
+      if (onlyDocAnim && !i.genreIds.some((g) => wantedGenres.includes(g))) return false
+      if (entries.length) {
+        const has = entries.map((e) => i.genreIds.includes(e[i.type] ?? -1))
+        if (q.genreMode === 'any' ? !has.some(Boolean) : !has.every(Boolean)) return false
+      }
+      if (q.moods.length && !q.moods.some((m) => (MOODS.find((x) => x.id === m)?.[i.type] ?? []).some((g) => i.genreIds.includes(g)))) return false
+      if (q.yearFrom && i.year < q.yearFrom) return false
+      if (q.yearTo && i.year > q.yearTo) return false
+      if (q.minTmdb && i.rating < q.minTmdb) return false
+      if (q.lang && i.lang !== q.lang) return false
+      return true
+    })
+    .map<Title>((i) => ({
+      id: i.id,
+      type: i.type,
+      title: i.title,
+      year: i.year,
+      date: i.date,
+      poster: i.poster,
+      backdrop: i.backdrop,
+      rating: i.rating,
+      popularity: 0,
+      genreIds: i.genreIds,
+      overview: i.overview,
+      note: q.awards.filter((k) => k in i.awards).map((k) => `${awardLabel(k)}${i.awards[k] ? ' ' + i.awards[k] : ''}`).join(' · '),
+    }))
+  return q.sort === 'recent' ? out : [...out].sort((a, b) => b.rating - a.rating)
+}
+
 /** Una pagina di risultati per la query. Con un attore filtrato la pagina 1 contiene tutto. */
 export async function discover(q: Query, page: number): Promise<{ items: Title[]; more: boolean }> {
   const genres = await genreList()
+  if (q.awards.length) return { items: await awardTitles(q, genres), more: false }
   if (q.actor) {
     if (page > 1) return { items: [], more: false }
     return { items: sortTitles(await actorTitles(q, genres), q.sort), more: false }

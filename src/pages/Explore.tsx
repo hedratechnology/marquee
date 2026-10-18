@@ -10,6 +10,7 @@ import { usePersonal } from '../personal'
 import { Chip, Empty, Range, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
 import { Icon } from '../ui/icons'
 import { activeChips, errText, summary } from '../ui/helpers'
+import { AWARD_OPTIONS } from '../awards'
 
 type ViewsApi = ReturnType<typeof useViews>
 
@@ -114,6 +115,17 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
               </div>
             )}
           </div>
+          <div className="group">
+            <span className="eyebrow">Ordina e nascondi</span>
+            <div className="row">
+              <select className="field" value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
+                <option value="popularity">Più popolari</option>
+                <option value="rating">Voto più alto</option>
+                <option value="recent">Più recenti</option>
+              </select>
+              <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
+            </div>
+          </div>
         </div>
 
         <div className="fcol">
@@ -157,6 +169,13 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
         </div>
 
         <div className="fcol">
+          <div className="group">
+            <span className="eyebrow">Premi vinti</span>
+            <div className="row">
+              {AWARD_OPTIONS.map((a) => <Chip key={a.id} on={q.awards.includes(a.id)} onClick={() => set({ awards: toggleIn(q.awards, a.id) })}>{a.label}</Chip>)}
+            </div>
+            <p className="muted hint">Dati da Wikidata, buoni ma non completi. Con un premio attivo piattaforme e durata non si applicano.</p>
+          </div>
           <div className="group">
             <span className="eyebrow">Durata e ritmo</span>
             <div className="row">
@@ -216,17 +235,6 @@ function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
                 {sugg.map((s) => <Chip key={s.id} onClick={() => { set(suggFor === 'actor' ? { actor: s } : { director: s }); setSugg([]) }}>{s.name}</Chip>)}
               </div>
             )}
-          </div>
-          <div className="group">
-            <span className="eyebrow">Ordina e nascondi</span>
-            <div className="row">
-              <select className="field" value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
-                <option value="popularity">Più popolari</option>
-                <option value="rating">Voto più alto</option>
-                <option value="recent">Più recenti</option>
-              </select>
-              <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
-            </div>
           </div>
         </div>
       </div>

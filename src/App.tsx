@@ -96,7 +96,6 @@ function Shell() {
           <div className="shell">
             <header className="hdr">
               <button className="brand" onClick={() => go('home')} aria-label="Marquee, vai alla home" data-tip="Torna alla home">
-                <span className="bulbs" aria-hidden="true"><i /><i /><i /></span>
                 Marquee
               </button>
               <nav className="topnav" aria-label="Sezioni">

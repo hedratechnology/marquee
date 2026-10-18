@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import * as tmdb from '../tmdb'
 import type { Title } from '../tmdb'
@@ -42,12 +42,31 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
   const R = useRatings()
   const { has, toggle } = useLists()
   const open = useOpen()
+  const ref = useRef<HTMLDivElement>(null)
   const fav = t ? has('favorites', t) : false
   const watch = t ? has('watchlist', t) : false
   const go = () => t && open(t)
-  const chips = scores ?? (t ? scoreChips(t, R.get(t), R.enabled) : [])
+
+  // i voti si cercano solo per le schede che compaiono sullo schermo
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !t || scores) return
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        requestRatings([t], true)
+        obs.disconnect()
+      }
+    }, { rootMargin: '200px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [t, scores])
+
+  const r = t ? R.get(t) : undefined
+  const votes = scores ?? (t ? scoreChips(t, r, R.enabled) : [])
+  const loadingVotes = !scores && !!t && R.enabled && !r && votes.length === 0
+
   return (
-    <div className="card">
+    <div className="card" ref={ref}>
       <div className="poster">
         <button className="open" onClick={go} aria-label={`Apri ${name}`}>
           {t?.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt="" /> : <div className="noimg">{name}</div>}
@@ -62,28 +81,34 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
             <Icon name="bookmark" size={16} fill={watch} />
           </button>
         </div>
-        {(chips.length > 0 || topScore) && (
+        {topScore && (
           <div className="score">
-            {topScore && <span className="top" data-tip="Punteggio Marquee da 0 a 100: critica, pubblico e premi">{topScore}</span>}
-            {chips.map((c) => <span key={c} data-tip={scoreTip(c)}>{c}</span>)}
+            <span className="top" data-tip="Punteggio Marquee da 0 a 100: critica, pubblico e premi">{topScore}</span>
           </div>
         )}
       </div>
       <button className="meta" onClick={go}>
         <b>{name}</b>
         <span>{sub}</span>
+        {(votes.length > 0 || loadingVotes) && (
+          <span className="votes">
+            {votes.map((c, i) => (
+              <span key={c} data-tip={scoreTip(c)}>{i > 0 && <i aria-hidden="true"> · </i>}{c}</span>
+            ))}
+            {loadingVotes && <span className="faint">Voti…</span>}
+          </span>
+        )}
       </button>
     </div>
   )
 }
 
 export function TitleGrid({ items, empty }: { items: Title[]; empty?: ReactNode }) {
-  useEffect(() => requestRatings(items), [items])
   if (!items.length) return <>{empty ?? <p className="muted">Nessun risultato.</p>}</>
   return (
     <div className="grid">
       {items.map((t) => (
-        <PosterCard key={t.type + t.id} t={t} name={t.title} sub={`${t.year} · ${t.type === 'movie' ? 'Film' : 'Serie'}`} />
+        <PosterCard key={t.type + t.id} t={t} name={t.title} sub={t.note ?? `${t.year} · ${t.type === 'movie' ? 'Film' : 'Serie'}`} />
       ))}
     </div>
   )
@@ -102,7 +127,6 @@ export function Rail({ title, action, children }: { title: string; action?: Reac
 }
 
 export function TitleRail({ title, items, action }: { title: string; items: Title[]; action?: ReactNode }) {
-  useEffect(() => requestRatings(items), [items])
   if (!items.length) return null
   return (
     <Rail title={title} action={action}>

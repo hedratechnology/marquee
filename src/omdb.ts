@@ -93,13 +93,15 @@ function pump() {
 }
 
 /** Mette in coda i punteggi mancanti per questi titoli (solo se la chiave OMDb è impostata). */
-export function requestRatings(items: Title[]) {
+export function requestRatings(items: Title[], priority = false) {
   if (!getOmdbKey() || limited) return
   for (const t of items) {
     const k = keyOf(t)
     if (cache.has(k) || inflight.has(k) || failed.has(k)) continue
     inflight.add(k)
-    queue.push(t)
+    // le schede visibili sullo schermo passano avanti a tutte le altre
+    if (priority) queue.unshift(t)
+    else queue.push(t)
   }
   pump()
 }

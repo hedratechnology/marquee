@@ -42,8 +42,8 @@ function Status({ ok, label }: { ok: boolean; label: string }) {
 }
 
 /** Una chiave di accesso: stato, campo e pulsante per salvarla. */
-function ConnRow({ name, desc, required, value, onSave, placeholder }: {
-  name: string; desc: string; required?: boolean; value: string; onSave: (v: string) => void; placeholder: string
+function ConnRow({ name, desc, required, value, onSave, placeholder, getUrl, getHow }: {
+  name: string; desc: string; required?: boolean; value: string; onSave: (v: string) => void; placeholder: string; getUrl: string; getHow: string
 }) {
   const [v, setV] = useState(value)
   const [saved, setSaved] = useState(false)
@@ -54,6 +54,9 @@ function ConnRow({ name, desc, required, value, onSave, placeholder }: {
         <div>
           <b>{name}</b>
           <p className="muted">{desc}</p>
+          <p className="muted">
+            <a href={getUrl} target="_blank" rel="noreferrer">Ottieni la chiave</a> · {getHow}
+          </p>
         </div>
         <Status ok={connected} label={connected ? 'Collegato' : required ? 'Obbligatorio' : 'Facoltativo'} />
       </div>
@@ -157,9 +160,9 @@ export function Settings({ lists, views, replaceLists, src }: {
 
         <div className="setmain">
           <Section id="connections" icon="link" title="Collegamenti" desc="Le chiavi gratuite che fanno funzionare Marquee. Restano solo su questo dispositivo.">
-            <ConnRow name="TMDB" required desc="Film, serie, cast e dove guardarli. Gratis su themoviedb.org (Impostazioni, API)." value={tmdb.getKey()} onSave={(v) => { tmdb.setKey(v); setVersion((n) => n + 1) }} placeholder="Chiave API o token Read Access" />
-            <ConnRow name="OMDb" desc="Voti di IMDb, Rotten Tomatoes e Metacritic. Gratis su omdbapi.com/apikey.aspx." value={getOmdbKey()} onSave={(v) => { setOmdbKey(v); setVersion((n) => n + 1) }} placeholder="Chiave OMDb" />
-            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" />
+            <ConnRow name="TMDB" required desc="Film, serie, cast e dove guardarli. È gratuita." value={tmdb.getKey()} onSave={(v) => { tmdb.setKey(v); setVersion((n) => n + 1) }} placeholder="Chiave API o token Read Access" getUrl="https://www.themoviedb.org/settings/api" getHow="Crea un account, poi Impostazioni → API → richiedi una chiave (uso personale) e copia la «API Key»." />
+            <ConnRow name="OMDb" desc="Voti di IMDb, Rotten Tomatoes e Metacritic. Il piano gratuito dà 1.000 richieste al giorno." value={getOmdbKey()} onSave={(v) => { setOmdbKey(v); setVersion((n) => n + 1) }} placeholder="Chiave OMDb" getUrl="https://www.omdbapi.com/apikey.aspx" getHow="Scegli il piano FREE, inserisci l'email e clicca il link di attivazione che ti arriva." />
+            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
           </Section>
 
           <Section id="platforms" icon="film" title="I tuoi abbonamenti" desc="Con questi, «Scegli per me» e i filtri possono mostrarti solo ciò che puoi guardare davvero.">

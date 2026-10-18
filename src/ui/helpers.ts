@@ -1,11 +1,13 @@
 import * as tmdb from '../tmdb'
 import type { Query } from '../tmdb'
 import { num } from './components'
+import { awardLabel } from '../awards'
 
 export function errText(e: unknown) {
   const m = e instanceof Error ? e.message : ''
   if (m === 'NO_KEY') return 'Inserisci la chiave TMDB in Impostazioni.'
   if (m === 'BAD_KEY') return 'Chiave TMDB non valida.'
+  if (m === 'AWARDS_MISSING') return "L'elenco dei premi non è ancora disponibile: compare dopo il prossimo aggiornamento automatico."
   return 'Errore di rete. Riprova.'
 }
 
@@ -33,6 +35,7 @@ export function activeChips(q: Query): ActiveChip[] {
   if (!q.onlyItaly) add('italy', 'Anche non disponibili in Italia', { onlyItaly: true })
   if (q.onlyMine) add('mine', 'Solo i miei abbonamenti', { onlyMine: false })
   if (q.monetization !== 'any') add('mon', MONETIZATION[q.monetization], { monetization: 'any' })
+  for (const a of q.awards) add('award-' + a, `Premio: ${awardLabel(a)}`, { awards: q.awards.filter((x) => x !== a) })
   if (q.actor) add('actor', `Con ${q.actor.name}`, { actor: undefined })
   if (q.director) add('director', `Regia di ${q.director.name}`, { director: undefined })
   if (q.status) add('status', q.status === 'ended' ? 'Serie concluse' : 'Serie in corso', { status: undefined })
