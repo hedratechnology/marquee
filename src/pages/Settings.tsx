@@ -217,6 +217,10 @@ export function Settings({ lists, views, replaceLists, src }: {
             <select id="ai-model" className="field" style={{ width: '100%', maxWidth: 420 }} value={personal.prefs.aiModel} onChange={(e) => personal.setPrefs({ aiModel: e.target.value })}>
               {AI_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
+            <div className="row" style={{ marginTop: 14 }}>
+              <Chip on={personal.prefs.autoBlurb} onClick={() => personal.setPrefs({ autoBlurb: !personal.prefs.autoBlurb })}>Scheda automatica quando apro un titolo</Chip>
+            </div>
+            <p className="muted" style={{ marginTop: 8 }}>Senza questa opzione le schede dettagliate si generano solo se premi il pulsante: ogni scheda usa una piccola richiesta all'IA.</p>
             <p className="muted" style={{ marginTop: 10 }}>Per spendere meno scegli Haiku. La ricerca con una frase è in Esplora e in Cerca → «Descrivi con l'IA».</p>
           </Section>
 

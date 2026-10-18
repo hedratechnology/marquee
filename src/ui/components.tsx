@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as tmdb from '../tmdb'
 import type { Title } from '../tmdb'
 import { requestRatings, useRatings } from '../omdb'
 import type { Ratings } from '../omdb'
 import { Icon } from './icons'
+import { quickLine } from '../decide'
 import { useLists, useOpen } from './ctx'
 
 export const num = (n: number) => String(n).replace('.', ',')
@@ -43,17 +44,19 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
   const { has, toggle } = useLists()
   const open = useOpen()
   const ref = useRef<HTMLDivElement>(null)
+  const [facts, setFacts] = useState<tmdb.Facts | null>(null)
   const fav = t ? has('favorites', t) : false
   const watch = t ? has('watchlist', t) : false
   const go = () => t && open(t)
 
-  // i voti si cercano solo per le schede che compaiono sullo schermo
+  // voti e dati rapidi (durata, stagioni) si cercano solo per le schede che compaiono sullo schermo
   useEffect(() => {
     const el = ref.current
-    if (!el || !t || scores) return
+    if (!el || !t) return
     const obs = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) {
-        requestRatings([t], true)
+        if (!scores) requestRatings([t], true)
+        tmdb.titleFacts(t.type, t.id).then(setFacts)
         obs.disconnect()
       }
     }, { rootMargin: '200px' })
@@ -90,6 +93,9 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
       <button className="meta" onClick={go}>
         <b>{name}</b>
         <span>{sub}</span>
+        {t && facts && quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts }) && (
+          <span className="qline">{quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts })}</span>
+        )}
         {(votes.length > 0 || loadingVotes) && (
           <span className="votes">
             {votes.map((c, i) => (

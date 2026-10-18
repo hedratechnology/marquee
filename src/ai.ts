@@ -238,8 +238,8 @@ Campi:
 - atmosphere: il tono e l'atmosfera.
 - pace: il ritmo (lento, regolare, serrato) e come si sviluppa, senza spoiler.
 - effort: quanto impegno richiede (attenzione, durata, pesantezza emotiva).
-- likeIf: a chi potrebbe piacere ("Potrebbe piacerti se…").
-- mightPutOff: cosa potrebbe frenarti ("Potrebbe frenarti se…").
+- likeIf: completa la frase «Potrebbe piacerti se…» scrivendo SOLO il seguito (es. «ami i thriller psicologici»), senza ripetere l'inizio.
+- mightPutOff: completa la frase «Potrebbe frenarti se…» scrivendo SOLO il seguito, senza ripetere l'inizio.
 - forYou: perché potrebbe fare al caso di QUESTA persona, usando il profilo di gusto fornito; se il profilo è vuoto, scrivi una frase neutra sul tipo di spettatore adatto.`
 
 function blurbUser(t: Title, d: Detail | undefined, taste: string, genreNames: string[]): string {
@@ -268,6 +268,12 @@ function readBlurbs(): BlurbCache {
   } catch {
     return {}
   }
+}
+
+/** Toglie l'inizio «Potrebbe piacerti/frenarti se» se il modello lo ripete: l'etichetta lo dice già. */
+export const stripLead = (s: string) => {
+  const t = s.replace(/^\s*potrebbe\s+(piacerti|frenarti)\s+se\s*/i, '').trim()
+  return t ? t[0].toUpperCase() + t.slice(1) : s
 }
 
 export const cachedBlurb = (t: Pick<Title, 'type' | 'id'>): Blurb | undefined => readBlurbs()[`${t.type}:${t.id}`]?.data

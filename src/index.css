@@ -671,3 +671,15 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .trow .rinfo b { display: block; margin-bottom: 8px; font-weight: 600; }
 .trow .row { gap: 6px; margin: 0; }
 .trow .chip { height: 30px; font-size: 0.78rem; }
+
+/* ---------- scheda "in breve" ---------- */
+.card .meta .qline { display: block; margin-top: 3px; font-size: 0.78rem; color: var(--text); opacity: 0.78; -webkit-line-clamp: 1; line-height: 1.3; }
+.brief { margin: 16px 0; padding: 16px; border-radius: 18px; background: var(--surface-2); border: 1px solid var(--line); }
+.brief-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.brief-grid { margin: 0; display: grid; grid-template-columns: 1fr; gap: 12px 18px; }
+@media (min-width: 640px) { .brief-grid { grid-template-columns: 1fr 1fr; } .brief-item.wide { grid-column: span 1; } }
+.brief-item dt { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.brief-item dt i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.brief-item dd { margin: 0; font-size: 0.9rem; line-height: 1.45; color: rgba(237, 237, 238, 0.92); }
+.brief-item dd ul { margin: 0; padding-left: 16px; display: grid; gap: 3px; }
+.brief .small { margin: 12px 0 0; font-size: 0.76rem; }

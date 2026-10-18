@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Detail, Title } from '../tmdb'
-import { aiErrorText, cachedBlurb, getAiKey, makeBlurb } from '../ai'
+import { aiErrorText, cachedBlurb, getAiKey, makeBlurb, stripLead } from '../ai'
 import type { Blurb } from '../ai'
 import { usePersonal } from '../personal'
 import { useGenres } from './data'
@@ -66,7 +66,7 @@ export function Expect({ t, detail }: { t: Title; detail?: Detail }) {
         {ROWS.map((r) => (
           <div key={r.key}>
             <dt>{r.label}</dt>
-            <dd>{blurb[r.key]}</dd>
+            <dd>{r.key === 'likeIf' || r.key === 'mightPutOff' ? stripLead(blurb[r.key]) : blurb[r.key]}</dd>
           </div>
         ))}
       </dl>

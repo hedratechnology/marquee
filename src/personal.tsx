@@ -39,9 +39,11 @@ export interface Prefs {
   onlyItaly: boolean
   /** lingua originale preferita, vuota = qualsiasi */
   lang: string
+  /** genera in automatico la scheda ragionata con l'IA quando apri un titolo (usa crediti) */
+  autoBlurb: boolean
 }
 
-export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5', onlyItaly: true, lang: '' }
+export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5', onlyItaly: true, lang: '', autoBlurb: false }
 
 export interface PersonalSnapshot {
   tags: Record<string, Tag[]>

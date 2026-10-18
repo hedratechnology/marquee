@@ -8,7 +8,7 @@ import { useLists } from '../ui/ctx'
 import type { ListName } from '../store'
 import { REACTIONS, TAGS, usePersonal } from '../personal'
 import { effortLabel } from '../pick'
-import { Expect } from '../ui/Expect'
+import { Brief } from '../ui/Brief'
 
 const MAIN: { l: ListName; label: string; on: string; icon: string }[] = [
   { l: 'watchlist', label: 'Da vedere', on: 'In lista', icon: 'bookmark' },
@@ -113,7 +113,7 @@ export function Detail({ t, close }: { t: Title; close: () => void }) {
 
         <p>{t.overview || 'Nessuna trama disponibile.'}</p>
 
-        <Expect t={t} detail={d ?? undefined} />
+        <Brief t={t} detail={d ?? undefined} />
 
         {d && (
           <>

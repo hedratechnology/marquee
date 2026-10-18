@@ -459,6 +459,38 @@ export function titleById(type: MediaType, id: number): Promise<Title | null> {
   return p
 }
 
+export interface Facts {
+  runtimeMin: number | null
+  episodeRuntime: number | null
+  seasons: number | null
+  episodes: number | null
+  status: string | null
+}
+
+const factsCache = new Map<string, Promise<Facts | null>>()
+
+/** Durata, stagioni e stato di un titolo: bastano per la riga di sintesi sulle schede. */
+export function titleFacts(type: MediaType, id: number): Promise<Facts | null> {
+  const k = `${type}:${id}`
+  let p = factsCache.get(k)
+  if (!p) {
+    p = call<{ runtime?: number; episode_run_time?: number[]; last_episode_to_air?: { runtime?: number }; number_of_seasons?: number; number_of_episodes?: number; status?: string }>(`/${type}/${id}`)
+      .then((d) => ({
+        runtimeMin: type === 'movie' ? d.runtime || null : null,
+        episodeRuntime: type === 'tv' ? d.episode_run_time?.[0] ?? d.last_episode_to_air?.runtime ?? null : null,
+        seasons: type === 'tv' ? d.number_of_seasons ?? null : null,
+        episodes: type === 'tv' ? d.number_of_episodes ?? null : null,
+        status: d.status ?? null,
+      }))
+      .catch(() => {
+        factsCache.delete(k)
+        return null
+      })
+    factsCache.set(k, p)
+  }
+  return p
+}
+
 export async function externalImdb(type: MediaType, id: number): Promise<string | null> {
   const r = await call<{ imdb_id?: string | null }>(`/${type}/${id}/external_ids`)
   return r.imdb_id || null
