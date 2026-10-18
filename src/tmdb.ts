@@ -21,6 +21,7 @@ export interface Title {
   year: string
   date: string
   poster: string | null
+  backdrop?: string | null
   rating: number
   popularity: number
   genreIds: number[]
@@ -115,6 +116,7 @@ function mapTitle(r: any, fallback?: MediaType): Title | null {
     year: date.slice(0, 4),
     date,
     poster: r.poster_path,
+    backdrop: r.backdrop_path ?? null,
     rating: Math.round((r.vote_average ?? 0) * 10) / 10,
     popularity: r.popularity ?? 0,
     genreIds: r.genre_ids ?? [],
@@ -278,6 +280,11 @@ export function titleById(type: MediaType, id: number): Promise<Title | null> {
     basicCache.set(k, p)
   }
   return p
+}
+
+export async function trending(): Promise<Title[]> {
+  const r = await call<{ results: unknown[] }>('/trending/all/week')
+  return clean(r.results.map((x) => mapTitle(x))).filter((t) => t.poster)
 }
 
 export async function externalImdb(type: MediaType, id: number): Promise<string | null> {

@@ -1,0 +1,39 @@
+name: Update best list
+on:
+  schedule:
+    # ogni lunedì alle 04:00 UTC
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: update-best
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/build-best.mjs
+        env:
+          TMDB_KEY: ${{ secrets.TMDB_KEY }}
+          OMDB_KEY: ${{ secrets.OMDB_KEY }}
+      - name: Commit data and redeploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/best.json data/cache.json
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica"
+          else
+            git commit -m "Update best list"
+            git push
+            # i push fatti con il token del workflow non avviano altri workflow: rilancio il deploy
+            gh workflow run deploy.yml
+          fi
