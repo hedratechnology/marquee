@@ -2,6 +2,9 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  schedule:
+    # ogni giorno alle 05:30 UTC: aggiorna le scadenze
+    - cron: '30 5 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,6 +23,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node scripts/fetch-expiring.mjs
+        env:
+          STREAMING_KEY: ${{ secrets.STREAMING_KEY }}
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/

@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as tmdb from './tmdb'
-import type { Detail, Filters, MediaType, Title } from './tmdb'
+import type { Detail, Kind, Query, Title } from './tmdb'
+import { getOmdbKey, requestRatings, setOmdbKey, useRatings } from './omdb'
+import type { Ratings } from './omdb'
 import { useLists } from './store'
-import type { ListName } from './store'
+import type { ListName, Lists as ListsData } from './store'
+import { MAX_VIEWS, useViews } from './views'
+import type { View } from './views'
 
 type Tab = 'explore' | 'search' | 'recs' | 'lists' | 'settings'
 type Opener = (t: Title) => void
+type ViewsApi = ReturnType<typeof useViews>
 
 const LIST_LABEL: Record<ListName, string> = { watchlist: 'Da vedere', seen: 'Visti', favorites: 'Preferiti' }
+const num = (n: number) => String(n).replace('.', ',')
 
 function errText(e: unknown) {
   const m = e instanceof Error ? e.message : ''
@@ -16,17 +22,49 @@ function errText(e: unknown) {
   return 'Errore di rete. Riprova.'
 }
 
+function summary(q: Query): string {
+  const kinds = tmdb.KINDS.filter((k) => q.kinds.includes(k.id)).map((k) => k.label)
+  const parts = [kinds.join(', ')]
+  if (q.genre) parts.push(q.genre)
+  if (q.minImdb) parts.push(`IMDb ${num(q.minImdb)}+`)
+  if (q.minRt) parts.push(`RT ${q.minRt}%+`)
+  if (q.minMeta) parts.push(`Meta ${q.minMeta}+`)
+  if (q.minTmdb) parts.push(`TMDB ${num(q.minTmdb)}+`)
+  if (q.providers.length) parts.push(tmdb.PROVIDERS.filter((p) => q.providers.includes(p.id)).map((p) => p.name).join('/'))
+  if (q.yearFrom || q.yearTo) parts.push(`${q.yearFrom || '…'}–${q.yearTo || '…'}`)
+  if (q.actor) parts.push(q.actor.name)
+  return parts.join(' · ')
+}
+
+function badges(t: Title, r: Ratings | undefined, enabled: boolean) {
+  const list: string[] = []
+  if (r?.imdb !== undefined) list.push(`IMDb ${num(r.imdb)}`)
+  if (r?.rt !== undefined) list.push(`RT ${r.rt}%`)
+  if (r?.meta !== undefined) list.push(`MC ${r.meta}`)
+  if (!list.length && (!enabled || r)) list.push(`TMDB ${num(t.rating)}`)
+  return list
+}
+
 function Grid({ items, open, empty }: { items: Title[]; open: Opener; empty?: string }) {
+  const R = useRatings()
+  useEffect(() => requestRatings(items), [items])
   if (!items.length) return <p className="muted">{empty ?? 'Nessun risultato.'}</p>
   return (
     <div className="grid">
       {items.map((t) => (
         <button key={t.type + t.id} className="card" onClick={() => open(t)}>
-          {t.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt={t.title} /> : <div className="noimg">{t.title}</div>}
+          <div className="poster">
+            {t.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt={t.title} /> : <div className="noimg">{t.title}</div>}
+            <div className="badges">
+              {badges(t, R.get(t), R.enabled).map((b) => (
+                <span key={b}>{b}</span>
+              ))}
+            </div>
+          </div>
           <div className="meta">
             <b>{t.title}</b>
             <span className="muted">
-              {t.year} · ★ {t.rating}
+              {t.year} · {t.type === 'movie' ? 'Film' : 'Serie'}
             </span>
           </div>
         </button>
@@ -35,47 +73,239 @@ function Grid({ items, open, empty }: { items: Title[]; open: Opener; empty?: st
   )
 }
 
-function Explore({ open }: { open: Opener }) {
-  const [f, setF] = useState<Filters>({ type: 'movie', providers: [], sort: 'popularity.desc', page: 1 })
-  const [gen, setGen] = useState<{ id: number; name: string }[]>([])
-  const [items, setItems] = useState<Title[]>([])
-  const [err, setErr] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [actor, setActor] = useState<{ id: number; name: string } | null>(null)
-  const [q, setQ] = useState('')
-  const [sugg, setSugg] = useState<{ id: number; name: string }[]>([])
-
-  useEffect(() => {
-    tmdb.genres(f.type).then(setGen).catch(() => setGen([]))
-  }, [f.type])
-
-  const run = useCallback(
-    async (append: boolean) => {
-      setLoading(true)
-      setErr('')
-      try {
-        const res = actor ? await tmdb.discoverByActor(actor.id, f.type) : await tmdb.discover(f)
-        setItems((cur) => (append && !actor ? [...cur, ...res] : res))
-      } catch (e) {
-        setErr(errText(e))
-      } finally {
-        setLoading(false)
-      }
-    },
-    [f, actor],
+function Chip({ on, children, onClick }: { on?: boolean; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button className={'chip' + (on ? ' on' : '')} onClick={onClick}>
+      {children}
+    </button>
   )
+}
 
-  // Ricarica quando cambiano i filtri (page 1) o si chiede la pagina successiva
+function Range({ label, value, min, max, step, suffix = '', onChange }: {
+  label: string; value: number; min: number; max: number; step: number; suffix?: string; onChange: (v: number) => void
+}) {
+  return (
+    <label className="rng">
+      <span className="k">{label}</span>
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} />
+      <span className="v">{value ? num(value) + suffix : 'Tutti'}</span>
+    </label>
+  )
+}
+
+function ViewsStrip({ api, q, onApply, activeId }: { api: ViewsApi; q: Query; onApply: (v: View) => void; activeId: string | null }) {
+  const [edit, setEdit] = useState(false)
+  return (
+    <section>
+      <div className="row between">
+        <h2>Le tue viste</h2>
+        <button className="link" onClick={() => setEdit((e) => !e)}>{edit ? 'Fine' : 'Modifica'}</button>
+      </div>
+      <div className="views">
+        {api.views.map((v, i) => (
+          <div key={v.id} className={'view' + (activeId === v.id ? ' on' : '')}>
+            <button className="viewmain" onClick={() => onApply(v)}>
+              <b>{v.name}</b>
+              <span>{summary(v.query)}</span>
+            </button>
+            {edit && (
+              <div className="viewtools">
+                <button aria-label="Sposta a sinistra" disabled={i === 0} onClick={() => api.move(v.id, -1)}>←</button>
+                <button aria-label="Sposta a destra" disabled={i === api.views.length - 1} onClick={() => api.move(v.id, 1)}>→</button>
+                <button onClick={() => { const n = prompt('Nome della vista', v.name); if (n?.trim()) api.rename(v.id, n.trim()) }}>Nome</button>
+                <button onClick={() => api.update(v.id, q)}>Usa filtri attuali</button>
+                <button onClick={() => api.remove(v.id)}>Elimina</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {api.views.length < MAX_VIEWS && (
+          <button className="view add" onClick={() => { const n = prompt('Nome della nuova vista (usa i filtri attuali)'); if (n?.trim()) api.add(n.trim(), q) }}>
+            + Nuova vista
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+
+interface ExpiringItem {
+  type: tmdb.MediaType
+  id: number
+  title: string
+  year: number | null
+  imdb: number | null
+  service: string
+  serviceName: string
+  expiresAt: number
+  link: string | null
+}
+
+const DAY = 86400000
+
+function daysLabel(ts: number) {
+  const d = Math.ceil((ts * 1000 - Date.now()) / DAY)
+  return d <= 0 ? 'oggi' : d === 1 ? 'domani' : `tra ${d} giorni`
+}
+
+function Expiring({ open }: { open: Opener }) {
+  const [data, setData] = useState<{ generatedAt: string; items: ExpiringItem[] } | null>(null)
+  const [min, setMin] = useState(() => Number(localStorage.getItem('exp_min') ?? 7))
+  const [service, setService] = useState('')
+  const [titles, setTitles] = useState<Record<string, Title>>({})
+
   useEffect(() => {
-    run(f.page > 1)
-  }, [run, f.page])
+    fetch(`${import.meta.env.BASE_URL}expiring.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setData(d && Array.isArray(d.items) ? d : null))
+      .catch(() => setData(null))
+  }, [])
 
-  const set = (p: Partial<Filters>) => setF((c) => ({ ...c, ...p, page: 1 }))
-  const toggleProv = (id: number) =>
-    set({ providers: f.providers.includes(id) ? f.providers.filter((x) => x !== id) : [...f.providers, id] })
+  const now = Date.now() / 1000
+  const shown = (data?.items ?? [])
+    .filter((i) => i.expiresAt >= now && (i.imdb ?? 0) >= min && (!service || i.service === service))
+    .slice(0, 14)
+  const shownKey = shown.map((i) => i.type + i.id).join(',')
+
+  useEffect(() => {
+    let live = true
+    Promise.all(shown.map((i) => tmdb.titleById(i.type, i.id))).then((list) => {
+      if (!live) return
+      setTitles(Object.fromEntries(list.filter((t): t is Title => !!t).map((t) => [t.type + t.id, t])))
+    })
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownKey])
+
+  if (!data?.items.length) return null
+  const services = [...new Map(data.items.map((i) => [i.service, i.serviceName])).entries()]
+
+  return (
+    <section>
+      <div className="row between">
+        <h2>In scadenza che meritano</h2>
+        <div className="row">
+          <select value={service} onChange={(e) => setService(e.target.value)}>
+            <option value="">Tutte le piattaforme</option>
+            {services.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <select value={min} onChange={(e) => { setMin(+e.target.value); localStorage.setItem('exp_min', e.target.value) }}>
+            {[6, 6.5, 7, 7.5, 8].map((v) => <option key={v} value={v}>IMDb {num(v)}+</option>)}
+          </select>
+        </div>
+      </div>
+      {shown.length === 0 ? (
+        <p className="muted">Nessun titolo in scadenza con questi criteri.</p>
+      ) : (
+        <div className="exp">
+          {shown.map((i) => {
+            const t = titles[i.type + i.id]
+            return (
+              <button key={i.type + i.id + i.service} className="card" onClick={() => t && open(t)}>
+                <div className="poster">
+                  {t?.poster ? <img loading="lazy" src={`${tmdb.IMG}/w342${t.poster}`} alt={i.title} /> : <div className="noimg">{i.title}</div>}
+                  <span className="due">{daysLabel(i.expiresAt)}</span>
+                  <div className="badges">
+                    {i.imdb !== null && <span>IMDb {num(i.imdb)}</span>}
+                  </div>
+                </div>
+                <div className="meta">
+                  <b>{i.title}</b>
+                  <span className="muted">{i.serviceName}</span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <p className="muted">Dati per l'Italia, aggiornati il {new Date(data.generatedAt).toLocaleDateString('it-IT')}.</p>
+    </section>
+  )
+}
+
+function Explore({ open, seen, views, active }: { open: Opener; seen: Title[]; views: ViewsApi; active: boolean }) {
+  const [q, setQ] = useState<Query>(tmdb.emptyQuery)
+  const [activeView, setActiveView] = useState<string | null>(null)
+  const [panel, setPanel] = useState(false)
+  const [items, setItems] = useState<Title[]>([])
+  const [page, setPage] = useState(1)
+  const [more, setMore] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [genres, setGenres] = useState<tmdb.GenreEntry[]>([])
+  const [actorQ, setActorQ] = useState('')
+  const [sugg, setSugg] = useState<{ id: number; name: string }[]>([])
+  const reqId = useRef(0)
+  const R = useRatings()
+
+  useEffect(() => {
+    tmdb.genreList().then(setGenres).catch(() => setGenres([]))
+  }, [])
+
+  const load = useCallback(async (query: Query, p: number) => {
+    const id = ++reqId.current
+    setLoading(true)
+    setErr('')
+    try {
+      const r = await tmdb.discover(query, p)
+      if (id !== reqId.current) return
+      setItems((cur) => (p === 1 ? r.items : [...cur, ...r.items.filter((n) => !cur.some((c) => c.id === n.id && c.type === n.type))]))
+      setMore(r.more)
+      setPage(p)
+    } catch (e) {
+      if (id === reqId.current) setErr(errText(e))
+    } finally {
+      if (id === reqId.current) setLoading(false)
+    }
+  }, [])
+
+  // I punteggi e "nascondi visti" si applicano lato client: non rifanno la chiamata a TMDB
+  const serverKey = JSON.stringify({ ...q, minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false })
+  useEffect(() => {
+    load(JSON.parse(serverKey), 1)
+  }, [serverKey, load])
+
+  // Tornando su Esplora dopo aver inserito la chiave, riprova se c'era un errore o nessun dato
+  useEffect(() => {
+    if (!active) return
+    if (err || !items.length) load(JSON.parse(serverKey), 1)
+    if (!genres.length) tmdb.genreList().then(setGenres).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+
+  const seenSet = new Set(seen.map((t) => t.type + t.id))
+  const ratingFilter = !!(q.minImdb || q.minRt || q.minMeta)
+  const visible = items.filter((t) => {
+    if (q.hideSeen && seenSet.has(t.type + t.id)) return false
+    if (!ratingFilter) return true
+    const r = R.get(t)
+    if (!r) return false
+    if (q.minImdb && !(r.imdb !== undefined && r.imdb >= q.minImdb)) return false
+    if (q.minRt && !(r.rt !== undefined && r.rt >= q.minRt)) return false
+    if (q.minMeta && !(r.meta !== undefined && r.meta >= q.minMeta)) return false
+    return true
+  })
+
+  // Con filtri sui punteggi pochi titoli passano: carica altre pagine finché ce ne sono abbastanza
+  useEffect(() => {
+    if (ratingFilter && R.enabled && !R.limited && !loading && more && R.pending === 0 && visible.length < 12 && page < 6 && items.length) {
+      load(JSON.parse(serverKey), page + 1)
+    }
+  })
+
+  const set = (p: Partial<Query>) => {
+    setActiveView(null)
+    setQ((c) => ({ ...c, ...p }))
+  }
+  const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
+  const types = tmdb.kindTypes(q.kinds)
+  const genreOptions = genres.filter((g) => types.some((t) => g[t] !== undefined))
 
   async function findActor(v: string) {
-    setQ(v)
+    setActorQ(v)
     if (v.length < 2) return setSugg([])
     try {
       setSugg(await tmdb.searchPerson(v))
@@ -84,64 +314,109 @@ function Explore({ open }: { open: Opener }) {
     }
   }
 
+  const activeCount =
+    (q.genre ? 1 : 0) + (q.providers.length ? 1 : 0) + (q.yearFrom || q.yearTo ? 1 : 0) + (q.actor ? 1 : 0) +
+    (q.minImdb ? 1 : 0) + (q.minRt ? 1 : 0) + (q.minMeta ? 1 : 0) + (q.minTmdb ? 1 : 0) +
+    (q.maxRuntime ? 1 : 0) + (q.lang ? 1 : 0) + (q.hideSeen ? 1 : 0)
+
   return (
     <>
-      <h1>Esplora</h1>
-      <div className="row">
-        {(['movie', 'tv'] as MediaType[]).map((t) => (
-          <button key={t} className={f.type === t ? 'on' : ''} onClick={() => set({ type: t, genre: undefined })}>
-            {t === 'movie' ? 'Film' : 'Serie TV'}
+      <ViewsStrip
+        api={views}
+        q={q}
+        activeId={activeView}
+        onApply={(v) => { setQ(v.query); setActiveView(v.id) }}
+      />
+
+      <Expiring open={open} />
+
+      <div className="row between">
+        <h2>Esplora</h2>
+        <div className="row">
+          {visible.length > 0 && <button onClick={() => open(visible[Math.floor(Math.random() * visible.length)])}>Sorprendimi</button>}
+          <button className={panel ? 'on' : ''} onClick={() => setPanel((p) => !p)}>
+            Filtri{activeCount ? ` (${activeCount})` : ''}
           </button>
-        ))}
-        <select className="grow" value={f.genre ?? ''} onChange={(e) => set({ genre: e.target.value ? +e.target.value : undefined })}>
-          <option value="">Tutti i generi</option>
-          {gen.map((g) => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+        </div>
       </div>
+
       <div className="row">
-        <input className="grow" type="number" placeholder="Dall'anno (es. 2015)" value={f.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value })} />
-        <select value={f.minRating ?? 0} onChange={(e) => set({ minRating: +e.target.value })}>
-          <option value={0}>Qualsiasi voto</option>
-          {[6, 7, 8].map((v) => (
-            <option key={v} value={v}>Voto ≥ {v}</option>
-          ))}
-        </select>
-        <select value={f.sort} onChange={(e) => set({ sort: e.target.value })}>
-          <option value="popularity.desc">Più popolari</option>
-          <option value="vote_average.desc">Voto più alto</option>
-          <option value={f.type === 'movie' ? 'primary_release_date.desc' : 'first_air_date.desc'}>Più recenti</option>
-        </select>
-      </div>
-      <div className="row">
-        {tmdb.PROVIDERS.map((p) => (
-          <button key={p.id} className={'chip ' + (f.providers.includes(p.id) ? 'on' : '')} onClick={() => toggleProv(p.id)}>
-            {p.name}
-          </button>
+        {tmdb.KINDS.map((k) => (
+          <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggle<Kind>(q.kinds, k.id), genre: undefined }) : undefined}>
+            {k.label}
+          </Chip>
         ))}
       </div>
-      <div className="row">
-        {actor ? (
-          <button className="on" onClick={() => { setActor(null); setQ('') }}>Attore: {actor.name} ✕</button>
-        ) : (
-          <input className="grow" placeholder="Filtra per attore/attrice…" value={q} onChange={(e) => findActor(e.target.value)} />
-        )}
-      </div>
-      {!actor && sugg.length > 0 && (
-        <div className="sugg">
-          {sugg.map((s) => (
-            <button key={s.id} className="chip" onClick={() => { setActor(s); setSugg([]) }}>{s.name}</button>
-          ))}
+
+      {panel && (
+        <div className="panel">
+          <p className="lbl">Piattaforme (Italia, abbonamento incluso)</p>
+          <div className="row">
+            {tmdb.PROVIDERS.map((p) => (
+              <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggle(q.providers, p.id) })}>{p.name}</Chip>
+            ))}
+          </div>
+
+          <p className="lbl">Punteggi minimi</p>
+          {!getOmdbKey() && <p className="muted">Per IMDb, Rotten Tomatoes e Metacritic inserisci la chiave OMDb in Impostazioni.</p>}
+          <Range label="IMDb" value={q.minImdb} min={0} max={9.5} step={0.1} onChange={(v) => set({ minImdb: v })} />
+          <Range label="Rotten Tomatoes" value={q.minRt} min={0} max={100} step={5} suffix="%" onChange={(v) => set({ minRt: v })} />
+          <Range label="Metacritic" value={q.minMeta} min={0} max={100} step={5} onChange={(v) => set({ minMeta: v })} />
+          <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
+
+          <p className="lbl">Dettagli</p>
+          <div className="row">
+            <select className="grow" value={q.genre ?? ''} onChange={(e) => set({ genre: e.target.value || undefined })}>
+              <option value="">Tutti i generi</option>
+              {genreOptions.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+            </select>
+            <select value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })}>
+              <option value="">Ogni lingua</option>
+              {tmdb.LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </select>
+            <select value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })}>
+              <option value={0}>Ogni durata</option>
+              <option value={100}>Film sotto 100 min</option>
+              <option value={120}>Film sotto 120 min</option>
+              <option value={150}>Film sotto 150 min</option>
+            </select>
+          </div>
+          <div className="row">
+            <input className="grow" type="number" placeholder="Dall'anno" value={q.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value || undefined })} />
+            <input className="grow" type="number" placeholder="Fino all'anno" value={q.yearTo ?? ''} onChange={(e) => set({ yearTo: e.target.value || undefined })} />
+          </div>
+          <div className="row">
+            {q.actor ? (
+              <button className="on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>Attore: {q.actor.name} ✕</button>
+            ) : (
+              <input className="grow" placeholder="Attore o attrice…" value={actorQ} onChange={(e) => findActor(e.target.value)} />
+            )}
+          </div>
+          {!q.actor && sugg.length > 0 && (
+            <div className="row">
+              {sugg.map((s) => <Chip key={s.id} onClick={() => { set({ actor: s }); setSugg([]) }}>{s.name}</Chip>)}
+            </div>
+          )}
+          {q.actor && q.providers.length > 0 && <p className="muted">Con un attore selezionato il filtro piattaforme non si applica.</p>}
+          <div className="row">
+            <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
+            <select value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
+              <option value="popularity">Più popolari</option>
+              <option value="rating">Voto più alto</option>
+              <option value="recent">Più recenti</option>
+            </select>
+            <button onClick={() => { setActiveView(null); setQ(tmdb.emptyQuery) }}>Azzera</button>
+          </div>
         </div>
       )}
+
       {err && <p className="err">{err}</p>}
-      <Grid items={items} open={open} />
-      {!actor && items.length > 0 && (
-        <div className="row">
-          <button disabled={loading} onClick={() => setF((c) => ({ ...c, page: c.page + 1 }))}>
-            {loading ? 'Carico…' : 'Carica altri'}
-          </button>
+      {ratingFilter && R.limited && <p className="err">Limite giornaliero OMDb raggiunto: i filtri sui punteggi usano solo i titoli già controllati.</p>}
+      {ratingFilter && R.pending > 0 && <p className="muted">Controllo i punteggi… ({R.pending})</p>}
+      <Grid items={visible} open={open} empty={loading ? 'Carico…' : ratingFilter && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : undefined} />
+      {more && items.length > 0 && !q.actor && (
+        <div className="row center">
+          <button disabled={loading} onClick={() => load(JSON.parse(serverKey), page + 1)}>{loading ? 'Carico…' : 'Carica altri'}</button>
         </div>
       )}
     </>
@@ -154,7 +429,7 @@ function Search({ open }: { open: Opener }) {
   const [err, setErr] = useState('')
 
   useEffect(() => {
-    if (q.trim().length < 2) return setItems([])
+    if (q.trim().length < 2) return
     const h = setTimeout(() => {
       tmdb.search(q).then((r) => { setItems(r); setErr('') }).catch((e) => setErr(errText(e)))
     }, 350)
@@ -166,7 +441,7 @@ function Search({ open }: { open: Opener }) {
       <h1>Cerca</h1>
       <input style={{ width: '100%' }} autoFocus placeholder="Titolo di film o serie…" value={q} onChange={(e) => setQ(e.target.value)} />
       {err && <p className="err">{err}</p>}
-      <Grid items={items} open={open} empty={q.length < 2 ? 'Scrivi almeno 2 lettere.' : undefined} />
+      <Grid items={q.trim().length < 2 ? [] : items} open={open} empty={q.length < 2 ? 'Scrivi almeno 2 lettere.' : undefined} />
     </>
   )
 }
@@ -208,21 +483,19 @@ function Recs({ open, favorites, seen }: { open: Opener; favorites: Title[]; see
       <p className="muted">Basati sui tuoi preferiti. Titoli già visti o preferiti esclusi.</p>
       {err && <p className="err">{err}</p>}
       {loading && <p className="muted">Carico…</p>}
-      <Grid items={items} open={open} empty="Aggiungi qualche titolo ai Preferiti (♥) per ricevere consigli." />
+      <Grid items={items} open={open} empty="Aggiungi qualche titolo ai Preferiti per ricevere consigli." />
     </>
   )
 }
 
-function Lists({ open, lists }: { open: Opener; lists: Record<ListName, Title[]> }) {
+function Lists({ open, lists }: { open: Opener; lists: ListsData }) {
   const [tab, setTab] = useState<ListName>('watchlist')
   return (
     <>
       <h1>Le mie liste</h1>
       <div className="row">
         {(Object.keys(LIST_LABEL) as ListName[]).map((l) => (
-          <button key={l} className={tab === l ? 'on' : ''} onClick={() => setTab(l)}>
-            {LIST_LABEL[l]} ({lists[l].length})
-          </button>
+          <Chip key={l} on={tab === l} onClick={() => setTab(l)}>{LIST_LABEL[l]} ({lists[l].length})</Chip>
         ))}
       </div>
       <Grid items={lists[tab]} open={open} empty="Lista vuota." />
@@ -230,20 +503,35 @@ function Lists({ open, lists }: { open: Opener; lists: Record<ListName, Title[]>
   )
 }
 
-function Settings({ lists, replace }: { lists: Record<ListName, Title[]>; replace: (l: Record<ListName, Title[]>) => void }) {
-  const [key, setKey] = useState(tmdb.getKey())
+function KeyField({ label, help, value, onSave }: { label: string; help: string; value: string; onSave: (v: string) => void }) {
+  const [v, setV] = useState(value)
   const [saved, setSaved] = useState(false)
+  return (
+    <>
+      <h2>{label}</h2>
+      <p className="muted">{help}</p>
+      <div className="row">
+        <input className="grow" type="password" value={v} onChange={(e) => { setV(e.target.value); setSaved(false) }} placeholder="Incolla qui la chiave" />
+        <button className="primary" onClick={() => { onSave(v); setSaved(true) }}>Salva</button>
+      </div>
+      {saved && <p className="muted">Salvata ✓</p>}
+    </>
+  )
+}
 
+function Settings({ lists, views, replaceLists }: { lists: ListsData; views: ViewsApi; replaceLists: (l: ListsData) => void }) {
   function exportJson() {
-    const blob = new Blob([JSON.stringify(lists, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ lists, views: views.views }, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = 'film-liste.json'
+    a.download = 'marquee-backup.json'
     a.click()
   }
   async function importJson(file: File) {
     try {
-      replace(JSON.parse(await file.text()))
+      const d = JSON.parse(await file.text())
+      replaceLists(d.lists ?? d)
+      if (Array.isArray(d.views)) views.replace(d.views)
     } catch {
       alert('File non valido.')
     }
@@ -252,16 +540,9 @@ function Settings({ lists, replace }: { lists: Record<ListName, Title[]>; replac
   return (
     <>
       <h1>Impostazioni</h1>
-      <h2>Chiave TMDB</h2>
-      <p className="muted">
-        Si crea gratis su themoviedb.org (Impostazioni → API). Resta salvata solo in questo dispositivo. Vanno bene sia la chiave API v3 sia il token "Read Access".
-      </p>
-      <div className="row">
-        <input className="grow" type="password" value={key} onChange={(e) => { setKey(e.target.value); setSaved(false) }} placeholder="Incolla qui la chiave" />
-        <button className="primary" onClick={() => { tmdb.setKey(key); setSaved(true) }}>Salva</button>
-      </div>
-      {saved && <p className="muted">Salvata ✓ Vai su Esplora.</p>}
-      <h2>Backup liste</h2>
+      <KeyField label="Chiave TMDB" help="Si crea gratis su themoviedb.org (Impostazioni, API). Resta salvata solo in questo dispositivo. Vanno bene sia la chiave API v3 sia il token Read Access." value={tmdb.getKey()} onSave={tmdb.setKey} />
+      <KeyField label="Chiave OMDb (IMDb, Rotten Tomatoes, Metacritic)" help="Si crea gratis su omdbapi.com/apikey.aspx (1000 richieste al giorno). Serve per i punteggi e i relativi filtri." value={getOmdbKey()} onSave={setOmdbKey} />
+      <h2>Backup di liste e viste</h2>
       <div className="row">
         <button onClick={exportJson}>Esporta</button>
         <label>
@@ -270,24 +551,21 @@ function Settings({ lists, replace }: { lists: Record<ListName, Title[]>; replac
         </label>
       </div>
       <p className="muted">I dati sono nel browser: per usarli su un altro dispositivo, esporta e importa.</p>
+      <p className="muted">Questo prodotto usa l'API di TMDB ma non è approvato o certificato da TMDB.</p>
     </>
   )
 }
 
-function DetailSheet({
-  t, close, has, toggle, open,
-}: {
-  t: Title
-  close: () => void
-  has: (l: ListName, t: Title) => boolean
-  toggle: (l: ListName, t: Title) => void
-  open: Opener
+function DetailSheet({ t, close, has, toggle, open }: {
+  t: Title; close: () => void; has: (l: ListName, t: Title) => boolean; toggle: (l: ListName, t: Title) => void; open: Opener
 }) {
   const [d, setD] = useState<Detail | null>(null)
   const [similar, setSimilar] = useState<Title[]>([])
+  const R = useRatings()
 
   useEffect(() => {
     setD(null)
+    requestRatings([t])
     tmdb.detail(t.type, t.id).then(setD).catch(() => setD(null))
     tmdb.recommendations(t.type, t.id).then((r) => setSimilar(r.slice(0, 12))).catch(() => setSimilar([]))
   }, [t])
@@ -300,17 +578,19 @@ function DetailSheet({
           <div>
             <h1 style={{ marginTop: 0 }}>{t.title}</h1>
             <div className="muted">
-              {t.year} · ★ {t.rating}
+              {t.year} · {t.type === 'movie' ? 'Film' : 'Serie'}
               {d?.runtime ? ` · ${d.runtime}` : ''}
             </div>
             {d && <div className="muted">{d.genres.join(', ')}</div>}
+            <div className="badges inline">
+              {badges(t, R.get(t), R.enabled).map((b) => <span key={b}>{b}</span>)}
+              {R.get(t) && R.get(t)!.imdb !== undefined && <span>TMDB {num(t.rating)}</span>}
+            </div>
           </div>
         </div>
         <div className="row">
           {(Object.keys(LIST_LABEL) as ListName[]).map((l) => (
-            <button key={l} className={has(l, t) ? 'on' : ''} onClick={() => toggle(l, t)}>
-              {l === 'favorites' ? '♥ ' : ''}{LIST_LABEL[l]}
-            </button>
+            <Chip key={l} on={has(l, t)} onClick={() => toggle(l, t)}>{LIST_LABEL[l]}</Chip>
           ))}
         </div>
         <p>{t.overview || 'Nessuna trama disponibile.'}</p>
@@ -319,14 +599,12 @@ function DetailSheet({
             <h2>Dove guardarlo (Italia)</h2>
             {d.providers.length ? (
               <div className="logos">
-                {d.providers.map((p) => (
-                  <img key={p.id} src={`${tmdb.IMG}/w92${p.logo}`} alt={p.name} title={p.name} />
-                ))}
+                {d.providers.map((p) => <img key={p.id} src={`${tmdb.IMG}/w92${p.logo}`} alt={p.name} title={p.name} />)}
               </div>
             ) : (
               <p className="muted">Non in streaming incluso in abbonamento.</p>
             )}
-            {d.trailer && <p><a href={d.trailer} target="_blank" rel="noreferrer">▶ Trailer</a></p>}
+            {d.trailer && <p><a href={d.trailer} target="_blank" rel="noreferrer">Guarda il trailer</a></p>}
             <h2>Cast</h2>
             <p className="muted">{d.cast.map((c) => c.name).join(' · ')}</p>
           </>
@@ -347,6 +625,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(tmdb.getKey() ? 'explore' : 'settings')
   const [sel, setSel] = useState<Title | null>(null)
   const { lists, has, toggle, replace } = useLists()
+  const views = useViews()
 
   const tabs: [Tab, string][] = [
     ['explore', 'Esplora'], ['search', 'Cerca'], ['recs', 'Consigli'], ['lists', 'Liste'], ['settings', 'Impost.'],
@@ -354,11 +633,13 @@ export default function App() {
 
   return (
     <>
-      {tab === 'explore' && <Explore open={setSel} />}
+      <div hidden={tab !== 'explore'}>
+        <Explore open={setSel} seen={lists.seen} views={views} active={tab === 'explore'} />
+      </div>
       {tab === 'search' && <Search open={setSel} />}
       {tab === 'recs' && <Recs open={setSel} favorites={lists.favorites} seen={lists.seen} />}
       {tab === 'lists' && <Lists open={setSel} lists={lists} />}
-      {tab === 'settings' && <Settings lists={lists} replace={replace} />}
+      {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} />}
       {sel && <DetailSheet t={sel} close={() => setSel(null)} has={has} toggle={toggle} open={setSel} />}
       <nav>
         {tabs.map(([k, label]) => (
