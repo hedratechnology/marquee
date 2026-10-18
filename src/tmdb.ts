@@ -467,7 +467,29 @@ export interface Facts {
   status: string | null
   /** dove si guarda in Italia: abbonamento, e se solo noleggio o acquisto */
   providers: Provider[]
+  /** noleggio o acquisto (senza doppioni) */
+  rent: Provider[]
   rentBuyOnly: boolean
+  /** pagina di TMDB/JustWatch con tutte le piattaforme per questo titolo */
+  link: string | null
+}
+
+const SEARCH_URL: Record<number, string> = {
+  8: 'https://www.netflix.com/search?q=',
+  9: 'https://www.primevideo.com/search/?phrase=',
+  119: 'https://www.primevideo.com/search/?phrase=',
+  10: 'https://www.amazon.it/s?k=',
+  2: 'https://tv.apple.com/it/search?term=',
+  350: 'https://tv.apple.com/it/search?term=',
+  337: 'https://www.disneyplus.com/it-it/search?q=',
+  192: 'https://www.youtube.com/results?search_query=',
+  3: 'https://play.google.com/store/search?c=movies&q=',
+}
+
+/** Dove aprire un titolo su una piattaforma: ricerca sul sito se la conosciamo, altrimenti la pagina TMDB/JustWatch. */
+export function providerUrl(p: Provider, title: string, fallback: string | null): string | null {
+  const base = SEARCH_URL[p.id]
+  return base ? base + encodeURIComponent(title) : fallback
 }
 
 const factsCache = new Map<string, Promise<Facts | null>>()
@@ -477,7 +499,7 @@ export function titleFacts(type: MediaType, id: number): Promise<Facts | null> {
   const k = `${type}:${id}`
   let p = factsCache.get(k)
   if (!p) {
-    p = call<{ runtime?: number; episode_run_time?: number[]; last_episode_to_air?: { runtime?: number }; number_of_seasons?: number; number_of_episodes?: number; status?: string; 'watch/providers'?: { results?: Record<string, { flatrate?: unknown[]; rent?: unknown[]; buy?: unknown[] }> } }>(`/${type}/${id}`, { append_to_response: 'watch/providers' })
+    p = call<{ runtime?: number; episode_run_time?: number[]; last_episode_to_air?: { runtime?: number }; number_of_seasons?: number; number_of_episodes?: number; status?: string; 'watch/providers'?: { results?: Record<string, { link?: string; flatrate?: unknown[]; rent?: unknown[]; buy?: unknown[] }> } }>(`/${type}/${id}`, { append_to_response: 'watch/providers' })
       .then((d) => {
         const it = d['watch/providers']?.results?.[REGION]
         const providers = mapProviders(it?.flatrate as never)
@@ -488,7 +510,9 @@ export function titleFacts(type: MediaType, id: number): Promise<Facts | null> {
         episodes: type === 'tv' ? d.number_of_episodes ?? null : null,
         status: d.status ?? null,
         providers,
+        rent: [...new Map(mapProviders([...(it?.rent ?? []), ...(it?.buy ?? [])] as never).map((x) => [x.id, x])).values()],
         rentBuyOnly: !providers.length && !!(it?.rent?.length || it?.buy?.length),
+        link: it?.link ?? null,
         }
       })
       .catch(() => {

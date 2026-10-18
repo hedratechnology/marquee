@@ -19,10 +19,31 @@ export function scoreTip(label: string): string {
   return label
 }
 
-/** Dove si guarda in Italia, in una riga. */
-export function platformText(f: Pick<tmdb.Facts, 'providers' | 'rentBuyOnly'>): string {
-  if (f.providers.length) return f.providers.slice(0, 3).map((p) => p.name).join(' · ')
-  return f.rentBuyOnly ? 'Solo noleggio o acquisto' : 'Non in streaming'
+/** Dove si guarda in Italia: ogni piattaforma è un link al titolo (ricerca sul sito, o la pagina JustWatch). */
+export function Platforms({ facts, title }: { facts: tmdb.Facts; title: string }) {
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+  const links = (list: tmdb.Provider[]) =>
+    list.slice(0, 3).map((p, i) => {
+      const href = tmdb.providerUrl(p, title, facts.link)
+      return (
+        <span key={p.id}>
+          {i > 0 && ' · '}
+          {href ? <a href={href} target="_blank" rel="noreferrer" onClick={stop}>{p.name}</a> : p.name}
+        </span>
+      )
+    })
+  if (facts.providers.length) {
+    return (
+      <>
+        <span className="plat" data-tip="Dove lo guardi in Italia, con l'abbonamento"><Icon name="tv" size={12} /><span>{links(facts.providers)}</span></span>
+        {facts.rent.length > 0 && <span className="plat sub"><span>Anche a noleggio: {links(facts.rent)}</span></span>}
+      </>
+    )
+  }
+  if (facts.rent.length) {
+    return <span className="plat" data-tip="Non è in abbonamento: si noleggia o si compra"><Icon name="tv" size={12} /><span>Noleggio o acquisto: {links(facts.rent)}</span></span>
+  }
+  return <span className="plat"><Icon name="tv" size={12} /><span>Non in streaming in Italia</span></span>
 }
 
 export function scoreChips(t: Title, r: Ratings | undefined, enabled: boolean): string[] {
@@ -96,13 +117,13 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
           </div>
         )}
       </div>
-      <button className="meta" onClick={go}>
+      <div className="meta" role="link" tabIndex={0} onClick={go} onKeyDown={(e) => e.key === 'Enter' && go()}>
         <b>{name}</b>
         <span>{sub}</span>
         {t && facts && quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts }) && (
           <span className="qline">{quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts })}</span>
         )}
-        {facts && <span className="plat" data-tip="Dove lo guardi in Italia"><Icon name="tv" size={12} />{platformText(facts)}</span>}
+        {t && facts && <Platforms facts={facts} title={t.title} />}
         {(votes.length > 0 || loadingVotes) && (
           <span className="votes">
             {votes.map((c, i) => (
@@ -111,7 +132,7 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
             {loadingVotes && <span className="faint">Voti…</span>}
           </span>
         )}
-      </button>
+      </div>
     </div>
   )
 }

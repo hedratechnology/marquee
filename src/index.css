@@ -715,3 +715,12 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .pbtn { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: none; color: var(--muted); }
 .pbtn.on { color: var(--gold); border-color: var(--gold); }
 .pmore { margin-top: 10px; margin-right: 8px; }
+
+/* piattaforme cliccabili; le schede ora usano un div al posto del bottone */
+.card .meta { cursor: pointer; }
+.plat a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.3); text-underline-offset: 2px; }
+.plat a:hover { color: var(--gold); text-decoration-color: currentColor; }
+.plat.sub { display: block; opacity: 0.8; }
+.card .meta .plat > span, .pinfo .plat > span { display: inline; margin: 0; color: inherit; font-size: inherit; -webkit-line-clamp: unset; }
+.pmain { cursor: pointer; }
+.logos a { display: inline-block; }

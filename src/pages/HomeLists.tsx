@@ -9,7 +9,7 @@ import { matchesQuery, useFilterEnv } from '../filtering'
 import { analyze, fetchPool, mergeQueries, rankPool } from '../proposals'
 import type { Analysis } from '../proposals'
 import { useLists, useOpen, useTaste } from './../ui/ctx'
-import { platformText, scoreChips } from '../ui/components'
+import { Platforms, scoreChips } from '../ui/components'
 import { quickLine } from '../decide'
 import { Icon } from '../ui/icons'
 
@@ -40,15 +40,15 @@ function Row({ n, t, why }: { n: number; t: Title; why: string }) {
   return (
     <li className="prow">
       <span className="pn">{n}</span>
-      <button className="pmain" onClick={() => open(t)} aria-label={`Apri ${t.title}`}>
+      <div className="pmain" role="link" tabIndex={0} onClick={() => open(t)} onKeyDown={(e) => e.key === 'Enter' && open(t)} aria-label={`Apri ${t.title}`}>
         {t.poster ? <img loading="lazy" src={`${tmdb.IMG}/w154${t.poster}`} alt="" /> : <span className="noimg" />}
         <span className="pinfo">
           <b>{t.title}</b>
           <span className="psub">{[t.year, quick].filter(Boolean).join(' · ')}</span>
-          <span className="plat" data-tip="Dove lo guardi in Italia"><Icon name="tv" size={12} />{facts ? platformText(facts) : 'Cerco la piattaforma…'}</span>
+          {facts ? <Platforms facts={facts} title={t.title} /> : <span className="plat">Cerco la piattaforma…</span>}
           {(votes.length > 0 || why) && <span className="psub">{[...votes.slice(0, 2), why].filter(Boolean).join(' · ')}</span>}
         </span>
-      </button>
+      </div>
       <button className={'pbtn' + (watch ? ' on' : '')} aria-pressed={watch} aria-label={watch ? 'Togli da Da vedere' : 'Aggiungi a Da vedere'} data-tip={watch ? 'In «Da vedere»: tocca per togliere' : 'Aggiungi a «Da vedere»'} onClick={() => toggle('watchlist', t)}>
         <Icon name="bookmark" size={16} fill={watch} />
       </button>

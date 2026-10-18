@@ -120,15 +120,20 @@ export function Detail({ t, close }: { t: Title; close: () => void }) {
             <h3>Dove guardarlo in Italia</h3>
             {d.providers.length ? (
               <div className="logos">
-                {d.providers.map((x) => <img key={x.id} src={`${tmdb.IMG}/w92${x.logo}`} alt={x.name} title={x.name} />)}
+                {d.providers.map((x) => {
+                  const href = tmdb.providerUrl(x, d.title, d.link)
+                  const img = <img src={`${tmdb.IMG}/w92${x.logo}`} alt={x.name} title={href ? `Apri su ${x.name}` : x.name} />
+                  return href ? <a key={x.id} href={href} target="_blank" rel="noreferrer">{img}</a> : <span key={x.id}>{img}</span>
+                })}
               </div>
             ) : (
               <p className="muted">Non è in streaming con abbonamento.</p>
             )}
             {(d.rent.length > 0 || d.buy.length > 0) && (
               <p className="muted" style={{ marginTop: 10 }}>
-                {d.rent.length > 0 && <>Noleggio: {d.rent.slice(0, 4).map((x) => x.name).join(', ')}. </>}
-                {d.buy.length > 0 && <>Acquisto: {d.buy.slice(0, 4).map((x) => x.name).join(', ')}.</>}
+                {d.rent.length > 0 && <>Noleggio: {d.rent.slice(0, 4).map((x, i) => <span key={x.id}>{i > 0 && ', '}{tmdb.providerUrl(x, d.title, d.link) ? <a href={tmdb.providerUrl(x, d.title, d.link) ?? ''} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</span>)}. </>}
+                {d.buy.length > 0 && <>Acquisto: {d.buy.slice(0, 4).map((x, i) => <span key={x.id}>{i > 0 && ', '}{tmdb.providerUrl(x, d.title, d.link) ? <a href={tmdb.providerUrl(x, d.title, d.link) ?? ''} target="_blank" rel="noreferrer">{x.name}</a> : x.name}</span>)}.</>}
+                {d.link && <> <a href={d.link} target="_blank" rel="noreferrer">Tutte le opzioni</a></>}
               </p>
             )}
             {d.trailer && <p style={{ marginTop: 14 }}><a className="btn sm" href={d.trailer} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><Icon name="play" size={14} fill /> Guarda il trailer</a></p>}
