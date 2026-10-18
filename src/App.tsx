@@ -17,6 +17,7 @@ import type { Goto } from './pages/Home'
 import { Explore } from './pages/Explore'
 import { FilterBar } from './pages/FilterBar'
 import { FilterStrip } from './pages/FilterStrip'
+import { ManageViews } from './pages/SavedSearches'
 import { Best } from './pages/Best'
 import { Library } from './pages/Library'
 import { SearchPage } from './pages/SearchPage'
@@ -51,6 +52,7 @@ function Shell() {
   const [back, setBack] = useState<Tab>('home')
   const [incoming, setIncoming] = useState<TogetherPayload | null>(incomingAtStart)
   const [sel, setSel] = useState<Title | null>(null)
+  const [manageViews, setManageViews] = useState(false)
   const { lists, has, toggle, replace } = useListsStore()
   const views = useViews()
   const src = useSources()
@@ -124,7 +126,7 @@ function Shell() {
               </button>
             </header>
 
-            <FilterBar />
+            <FilterBar views={views} onManage={() => setManageViews(true)} />
             {filterable && !F.open && <FilterStrip showNotice={tab !== 'explore'} />}
 
             <main>
@@ -132,7 +134,7 @@ function Shell() {
                 <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => go(t)} />
               </div>
               <div hidden={tab !== 'explore'}>
-                <Explore views={views} active={tab === 'explore'} />
+                <Explore active={tab === 'explore'} />
               </div>
               {tab === 'pick' && (
                 <>
@@ -161,6 +163,7 @@ function Shell() {
           </nav>
 
           {sel && <Detail t={sel} close={() => setSel(null)} />}
+          {manageViews && <ManageViews api={views} q={F.q} onClose={() => setManageViews(false)} />}
         </OpenCtx.Provider>
       </TasteCtx.Provider>
     </ListsCtx.Provider>

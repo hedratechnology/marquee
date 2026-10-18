@@ -6,6 +6,8 @@ import { AWARD_OPTIONS } from '../awards'
 import { getOmdbKey } from '../omdb'
 import { Chip, Range } from '../ui/components'
 import { Icon } from '../ui/icons'
+import type { useViews } from '../views'
+import { MAX_VIEWS } from '../views'
 import { useFilters } from '../filters'
 import { usePersonal } from '../personal'
 
@@ -13,7 +15,8 @@ const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x 
 const THIS_YEAR = new Date().getFullYear()
 const MIN_YEAR = 1920
 
-type CatId = 'what' | 'where' | 'score' | 'time' | 'who' | 'order'
+type CatId = 'what' | 'where' | 'score' | 'time' | 'who' | 'order' | 'saved'
+type ViewsApi = ReturnType<typeof useViews>
 
 const CATS: { id: CatId; label: string; hint: string; icon: string; color: string }[] = [
   { id: 'what', label: 'Cosa', hint: 'Tipo, umore, generi', icon: 'film', color: '#a78bfa' },
@@ -22,6 +25,7 @@ const CATS: { id: CatId; label: string; hint: string; icon: string; color: strin
   { id: 'time', label: 'Tempo e ritmo', hint: 'Anno, durata, violenza', icon: 'clock', color: '#34d399' },
   { id: 'who', label: 'Chi e dove', hint: 'Persone, paesi, lingue', icon: 'globe', color: '#fb7185' },
   { id: 'order', label: 'Ordine', hint: 'Come mostrare i risultati', icon: 'sliders', color: '#a1a1aa' },
+  { id: 'saved', label: 'Salvate', hint: 'Le tue combinazioni di filtri', icon: 'bookmark', color: '#2dd4bf' },
 ]
 
 /** A quale categoria appartiene un filtro attivo (per i conteggi nel menu). */
@@ -88,10 +92,11 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
 }
 
 /** La barra dei filtri: si apre sotto l'intestazione e i risultati sotto si aggiornano in diretta. */
-export function FilterBar() {
+export function FilterBar({ views, onManage }: { views: ViewsApi; onManage: () => void }) {
   const F = useFilters()
   const personal = usePersonal()
-  const { q, set, reset, stats, chips } = F
+  const { q, base, set, reset, stats, chips } = F
+  const [saveName, setSaveName] = useState('')
   const savedProviders = personal.prefs.providers
   const onSaveProviders = (ids: number[]) => personal.setPrefs({ providers: ids })
   const hasMine = savedProviders.length > 0
@@ -106,7 +111,7 @@ export function FilterBar() {
     tmdb.genreList().then(setGenres).catch(() => setGenres([]))
   }, [])
 
-  const counts: Record<CatId, number> = { what: 0, where: 0, score: 0, time: 0, who: 0, order: 0 }
+  const counts: Record<CatId, number> = { what: 0, where: 0, score: 0, time: 0, who: 0, order: 0, saved: 0 }
   for (const c of chips) counts[catOf(c.key)]++
   const current = CATS.find((c) => c.id === cat)!
   const types = tmdb.kindTypes(q.kinds)
@@ -288,6 +293,31 @@ export function FilterBar() {
         </Block>
       </>
     ),
+    saved: (
+      <>
+        <Block title="Le tue ricerche salvate" hint="Un tocco applica i filtri salvati a qualsiasi pagina.">
+          <div className="row">
+            {views.views.map((v) => (
+              <Chip key={v.id} on={F.viewId === v.id} onClick={() => (F.viewId === v.id ? F.reset() : F.setQuery(v.query, '', v.id))}>{v.name}</Chip>
+            ))}
+            {views.views.length === 0 && <span className="muted">Nessuna ricerca salvata.</span>}
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn sm" onClick={onManage}>Rinomina, riordina, elimina</button>
+          </div>
+        </Block>
+        <Block title="Salva i filtri attuali" hint={`Hai ${views.views.length} su ${MAX_VIEWS} ricerche salvate.`}>
+          {views.views.length < MAX_VIEWS ? (
+            <div className="row">
+              <input className="field" placeholder="Nome della ricerca" value={saveName} onChange={(e) => setSaveName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && saveName.trim()) { views.add(saveName.trim(), q); setSaveName('') } }} />
+              <button className="btn sm gold" disabled={!saveName.trim()} onClick={() => { views.add(saveName.trim(), q); setSaveName('') }}>Salva</button>
+            </div>
+          ) : (
+            <p className="blk-h">Hai raggiunto il massimo: elimina una ricerca per salvarne un'altra.</p>
+          )}
+        </Block>
+      </>
+    ),
     order: (
       <>
         <Block title="Ordina per">
@@ -302,6 +332,9 @@ export function FilterBar() {
       </>
     ),
   }
+
+  const presetOn = (patch: Partial<Query>) =>
+    Object.entries(patch).every(([k, v]) => JSON.stringify((q as unknown as Record<string, unknown>)[k]) === JSON.stringify(v))
 
   if (!F.open) return null
 
@@ -329,7 +362,14 @@ export function FilterBar() {
       <div className="fbar-presets" role="group" aria-label="Scorciatoie">
         <span className="pv-label">Scorciatoie</span>
         {PRESETS.map((p) => (
-          <button key={p.id} className="preset" style={{ ['--c' as string]: p.color }} onClick={() => set(p.patch)} data-tip="Applica questa scorciatoia">
+          <button
+            key={p.id}
+            className={'preset' + (presetOn(p.patch) ? ' on' : '')}
+            style={{ ['--c' as string]: p.color }}
+            aria-pressed={presetOn(p.patch)}
+            onClick={() => (presetOn(p.patch) ? set(Object.fromEntries(Object.keys(p.patch).map((k) => [k, (base as unknown as Record<string, unknown>)[k]])) as Partial<Query>) : set(p.patch))}
+            data-tip={presetOn(p.patch) ? 'Togli questa scorciatoia' : 'Applica questa scorciatoia'}
+          >
             <i />{p.label}
           </button>
         ))}

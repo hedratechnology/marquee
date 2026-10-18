@@ -1,59 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as tmdb from '../tmdb'
-import type { Kind, Query, Title } from '../tmdb'
+import type { Query, Title } from '../tmdb'
 import { requestRatings, useRatings } from '../omdb'
 import type { Ratings } from '../omdb'
-import type { useViews } from '../views'
-import { MAX_VIEWS } from '../views'
 import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
 import { useFilters, useReportCount } from '../filters'
-import { Chip, Empty, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
+import { Empty, SkeletonGrid, TitleGrid } from '../ui/components'
 import { useLists } from '../ui/ctx'
 import { Icon } from '../ui/icons'
-import { errText, summary } from '../ui/helpers'
+import { errText } from '../ui/helpers'
 
-type ViewsApi = ReturnType<typeof useViews>
-
-const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 /** minuscolo e senza accenti, per confrontare i titoli */
 const plain = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: () => void }) {
-  const [name, setName] = useState('')
-  return (
-    <Sheet title="Le tue ricerche salvate" onClose={onClose}>
-      <p className="muted">Una vista è un insieme di filtri salvato con un nome. Ne puoi avere fino a {MAX_VIEWS}.</p>
-      <div className="viewlist">
-        {api.views.map((v, i) => (
-          <div key={v.id} className="viewitem">
-            <b>{v.name}</b>
-            <span className="muted">{summary(v.query)}</span>
-            <div className="tools">
-              <button className="btn sm" disabled={i === 0} onClick={() => api.move(v.id, -1)} aria-label="Sposta su"><Icon name="up" size={14} /></button>
-              <button className="btn sm" disabled={i === api.views.length - 1} onClick={() => api.move(v.id, 1)} aria-label="Sposta giù"><Icon name="down" size={14} /></button>
-              <button className="btn sm" onClick={() => { const n = prompt('Nome della vista', v.name); if (n?.trim()) api.rename(v.id, n.trim()) }}>Rinomina</button>
-              <button className="btn sm" onClick={() => api.update(v.id, q)}>Usa i filtri attuali</button>
-              <button className="btn sm" onClick={() => api.remove(v.id)}>Elimina</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {api.views.length < MAX_VIEWS ? (
-        <div className="row" style={{ marginTop: 16 }}>
-          <input className="field" placeholder="Nome nuova ricerca" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn gold" disabled={!name.trim()} onClick={() => { api.add(name.trim(), q); setName('') }}>Salva i filtri attuali</button>
-        </div>
-      ) : (
-        <p className="muted" style={{ marginTop: 14 }}>Hai raggiunto il massimo di {MAX_VIEWS}: eliminane una per aggiungerne un'altra.</p>
-      )}
-    </Sheet>
-  )
-}
-
-export function Explore({ views, active }: { views: ViewsApi; active: boolean }) {
+export function Explore({ active }: { active: boolean }) {
   const F = useFilters()
-  const { q, base, set, setQuery, reset, viewId, note, isFiltered } = F
+  const { q, setQuery, reset, note, isFiltered } = F
   const personal = usePersonal()
   const { lists } = useLists()
   const mine = personal.prefs.providers
@@ -62,7 +25,6 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
   const [more, setMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
-  const [manage, setManage] = useState(false)
   const [phrase, setPhrase] = useState('')
   const [nl, setNl] = useState<{ busy: boolean; err: string }>({ busy: false, err: '' })
   // il campo di ricerca: o filtra i risultati che vedi, o descrive in una frase cosa cerchi (IA)
@@ -176,12 +138,7 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
 
   return (
     <>
-      <div className="row between">
-        <h1 className="page-title">Esplora</h1>
-        <div className="row">
-          <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le ricerche salvate" data-tip="Gestisci le ricerche salvate"><Icon name="edit" size={18} /></button>
-        </div>
-      </div>
+      <h1 className="page-title">Esplora</h1>
 
       <div className="nlbox">
         <div className="mode2" role="tablist" aria-label="Come cercare">
@@ -204,21 +161,7 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
       {nl.err && <p className="err">{nl.err}</p>}
       {note && <p className="muted"><b>Ho capito:</b> {note}</p>}
 
-      <div className="pills" role="tablist" aria-label="Le tue ricerche salvate">
-        <button className={'pill' + (!viewId && !isFiltered ? ' on' : '')} onClick={() => { reset(); setPhrase('') }}>{base.providers.length ? 'Per me' : 'Tutto'}</button>
-        {views.views.map((v) => (
-          <button key={v.id} role="tab" aria-selected={viewId === v.id} className={'pill' + (viewId === v.id ? ' on' : '')} onClick={() => setQuery(v.query, '', v.id)}>
-            {v.name}
-          </button>
-        ))}
-      </div>
-
-      <div className="row" style={{ margin: '14px 0 8px' }}>
-        {tmdb.KINDS.map((k) => (
-          <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
-        ))}
-      </div>
-      <div style={{ height: 14 }} />
+      <div style={{ height: 6 }} />
 
       {err && <p className="err">{err}</p>}
       {ratingFilter && !R.enabled && <p className="err">Per filtrare per IMDb, Rotten Tomatoes o Metacritic serve la chiave OMDb: inseriscila in Impostazioni. Intanto i filtri sui voti non si applicano.</p>}
@@ -261,7 +204,6 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
         </div>
       )}
 
-      {manage && <ManageViews api={views} q={q} onClose={() => setManage(false)} />}
     </>
   )
 }
