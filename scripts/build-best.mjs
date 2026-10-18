@@ -7,6 +7,7 @@ const OUT = 'public/best.json'
 const CACHE = 'data/cache.json'
 const CACHE_DAYS = 30
 const TOP = 250
+const MIN_SCORE = 80 // sotto questa soglia un titolo non entra nella classifica
 const TMDB = 'https://api.themoviedb.org/3'
 
 function env(name) {
@@ -141,7 +142,7 @@ export function score(r, awardList) {
   if (critic === null && audience === null) return null
   let base
   if (critic !== null && audience !== null) base = 0.55 * critic + 0.45 * audience
-  else base = 0.92 * (critic ?? audience) // un solo dato: pesa un po' meno
+  else base = 0.96 * (critic ?? audience) // un solo dato (di solito le serie, senza voti della critica): pesa un po' meno
   const bonus = Math.min(9, awardList.length * 3)
   return Math.round(Math.min(100, base + bonus) * 10) / 10
 }
@@ -197,7 +198,7 @@ const rows = await inBatches(candidates, 5, async ({ type, r }) => {
 
 mkdirSync('data', { recursive: true })
 writeFileSync(CACHE, JSON.stringify(cache))
-const items = rows.filter(Boolean).sort((a, b) => b.score - a.score).slice(0, TOP)
+const items = rows.filter((r) => r && r.score >= MIN_SCORE).sort((a, b) => b.score - a.score).slice(0, TOP)
 mkdirSync('public', { recursive: true })
 writeFileSync(
   OUT,

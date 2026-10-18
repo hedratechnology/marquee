@@ -101,7 +101,7 @@ export function Best({ seen, sources }: { seen: Title[]; sources: { id: string; 
         <summary>Come si calcola il punteggio</summary>
         <p className="muted">
           Critica = media di Metascore e Rotten Tomatoes. Pubblico = voto IMDb, con almeno 10.000 voti. Il punteggio è 55% critica e 45% pubblico;
-          se manca uno dei due, l'altro pesa il 92%. Ogni premio vinto aggiunge 3 punti, fino a 9.
+          se manca uno dei due (succede spesso per le serie, che di solito hanno solo il voto IMDb), l'altro pesa il 96%. Ogni premio vinto aggiunge 3 punti, fino a 9. Entrano in classifica solo i titoli da 80 in su.
         </p>
       </details>
 
