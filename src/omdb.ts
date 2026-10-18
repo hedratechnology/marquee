@@ -104,6 +104,9 @@ export function requestRatings(items: Title[]) {
   pump()
 }
 
+/** Punteggi già in cache (senza React), utile per motivare un consiglio. */
+export const cachedRatings = (t: Pick<Title, 'type' | 'id'>): Ratings | undefined => cache.get(keyOf(t))
+
 export function useRatings() {
   useSyncExternalStore(
     (fn) => {

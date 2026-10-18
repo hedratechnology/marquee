@@ -171,3 +171,14 @@ export function Empty({ icon = 'film', title, text, action }: { icon?: string; t
     </div>
   )
 }
+
+export function Option<T extends string>({ value, current, onPick, title, hint }: {
+  value: T; current: T | undefined; onPick: (v: T) => void; title: string; hint?: string
+}) {
+  return (
+    <button className={'opt' + (current === value ? ' on' : '')} aria-pressed={current === value} onClick={() => onPick(value)}>
+      <b>{title}</b>
+      {hint && <span>{hint}</span>}
+    </button>
+  )
+}

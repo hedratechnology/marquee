@@ -5,6 +5,8 @@ export const REGION = 'IT'
 export type MediaType = 'movie' | 'tv'
 export type Kind = 'film' | 'series' | 'miniseries' | 'doc' | 'animation'
 export type Sort = 'popularity' | 'rating' | 'recent'
+export type Mood = 'light' | 'cozy' | 'intense' | 'mystery' | 'fun' | 'adventure'
+export type Monetization = 'any' | 'flatrate' | 'rent' | 'buy'
 
 export const KINDS: { id: Kind; label: string }[] = [
   { id: 'film', label: 'Film' },
@@ -12,6 +14,16 @@ export const KINDS: { id: Kind; label: string }[] = [
   { id: 'miniseries', label: 'Miniserie' },
   { id: 'doc', label: 'Documentari' },
   { id: 'animation', label: 'Animazione' },
+]
+
+/** Umori: insiemi di generi TMDB (id diversi per film e serie). Sono stime, non fatti. */
+export const MOODS: { id: Mood; label: string; hint: string; movie: number[]; tv: number[] }[] = [
+  { id: 'light', label: 'Leggero', hint: 'Per staccare la testa', movie: [35, 12, 16], tv: [35, 10759, 16] },
+  { id: 'cozy', label: 'Rassicurante', hint: 'Caldo, senza ansia', movie: [10751, 10749, 35, 16], tv: [10751, 35, 16, 18] },
+  { id: 'intense', label: 'Intenso', hint: 'Tosto e coinvolgente', movie: [18, 53, 80, 10752], tv: [18, 80, 10768] },
+  { id: 'mystery', label: 'Misterioso', hint: 'Enigmi e tensione', movie: [9648, 53, 80], tv: [9648, 80, 18] },
+  { id: 'fun', label: 'Divertente', hint: 'Per ridere', movie: [35], tv: [35] },
+  { id: 'adventure', label: 'Avventuroso', hint: 'Azione e mondi nuovi', movie: [28, 12, 878, 14], tv: [10759, 10765] },
 ]
 
 export interface Title {
@@ -28,27 +40,51 @@ export interface Title {
   overview: string
 }
 
+export interface Provider {
+  id: number
+  name: string
+  logo: string
+}
+
 export interface Detail extends Title {
   genres: string[]
   runtime: string
+  runtimeMin: number | null
+  seasons: number | null
+  episodes: number | null
+  episodeRuntime: number | null
+  status: string | null
+  certification: string | null
   cast: { id: number; name: string; character: string }[]
-  providers: { id: number; name: string; logo: string }[]
+  providers: Provider[]
+  rent: Provider[]
+  buy: Provider[]
   trailer: string | null
   link: string | null
 }
 
 export interface Query {
   kinds: Kind[]
-  genre?: string
+  moods: Mood[]
+  genres: string[]
+  /** 'all' = tutti i generi insieme, 'any' = almeno uno */
+  genreMode: 'all' | 'any'
   yearFrom?: string
   yearTo?: string
   providers: number[]
+  monetization: Monetization
+  onlyMine: boolean
   actor?: { id: number; name: string }
+  director?: { id: number; name: string }
+  country?: string
   minTmdb: number
   minImdb: number
   minRt: number
   minMeta: number
   maxRuntime?: number
+  maxEpisode?: number
+  status?: 'ended' | 'ongoing'
+  gentle: boolean
   lang?: string
   hideSeen: boolean
   sort: Sort
@@ -56,11 +92,17 @@ export interface Query {
 
 export const emptyQuery: Query = {
   kinds: ['film', 'series'],
+  moods: [],
+  genres: [],
+  genreMode: 'all',
   providers: [],
+  monetization: 'any',
+  onlyMine: false,
   minTmdb: 0,
   minImdb: 0,
   minRt: 0,
   minMeta: 0,
+  gentle: false,
   hideSeen: false,
   sort: 'popularity',
 }
@@ -73,6 +115,9 @@ export const PROVIDERS = [
   { id: 350, name: 'Apple TV+' },
   { id: 39, name: 'NOW' },
   { id: 29, name: 'Sky Go' },
+  { id: 222, name: 'RaiPlay' },
+  { id: 359, name: 'Mediaset Infinity' },
+  { id: 11, name: 'MUBI' },
   { id: 283, name: 'Crunchyroll' },
 ]
 
@@ -85,10 +130,23 @@ export const LANGS = [
   { id: 'ja', label: 'Giapponese' },
 ]
 
+export const COUNTRIES = [
+  { id: 'IT', label: 'Italia' },
+  { id: 'US', label: 'Stati Uniti' },
+  { id: 'GB', label: 'Regno Unito' },
+  { id: 'FR', label: 'Francia' },
+  { id: 'ES', label: 'Spagna' },
+  { id: 'DE', label: 'Germania' },
+  { id: 'KR', label: 'Corea del Sud' },
+  { id: 'JP', label: 'Giappone' },
+]
+
 export const getKey = () => localStorage.getItem('tmdb_key') ?? ''
 export const setKey = (k: string) => localStorage.setItem('tmdb_key', k.trim())
 
-async function call<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+type Params = Record<string, string | number | undefined>
+
+async function call<T>(path: string, params: Params = {}): Promise<T> {
   const key = getKey()
   if (!key) throw new Error('NO_KEY')
   const url = new URL(API + path)
@@ -162,6 +220,11 @@ export function genreList(): Promise<GenreEntry[]> {
   return genreCache
 }
 
+/** Nome leggibile di un id genere (film o serie). */
+export function genreName(genres: GenreEntry[], id: number): string | undefined {
+  return genres.find((g) => g.movie === id || g.tv === id)?.name
+}
+
 export function kindTypes(kinds: Kind[]): MediaType[] {
   const s = new Set<MediaType>()
   for (const k of kinds) {
@@ -199,14 +262,22 @@ const SORT_PARAM = (type: MediaType, s: Sort) =>
         : 'first_air_date.desc'
 
 async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEntry[]): Promise<Title[]> {
-  const gEntry = q.genre ? genres.find((g) => g.name === q.genre) : undefined
-  const gid = gEntry?.[spec.type]
-  if (q.genre && gid === undefined) return []
-  const ids = [spec.extraGenre, gid].filter((x): x is number => !!x)
+  const gIds = q.genres.map((n) => genres.find((g) => g.name === n)?.[spec.type]).filter((x): x is number => !!x)
+  // se i generi scelti non esistono per questo tipo (es. un genere solo da film) non c'è nulla da cercare
+  if (q.genres.length && !gIds.length) return []
+  const moodIds = [...new Set(q.moods.flatMap((m) => MOODS.find((x) => x.id === m)?.[spec.type] ?? []))]
+  // virgola = tutti i generi insieme, barra = almeno uno: non si possono mescolare
+  let withGenres = ''
+  if (spec.extraGenre) withGenres = [spec.extraGenre, ...gIds].join(',')
+  else if (gIds.length) withGenres = gIds.join(q.genreMode === 'any' ? '|' : ',')
+  else withGenres = moodIds.join('|')
+  const without = q.gentle ? (spec.type === 'movie' ? [27, 10752] : [10768]) : []
   const df = spec.type === 'movie' ? 'primary_release_date' : 'first_air_date'
+  const monetization = q.monetization === 'any' ? (q.providers.length ? 'flatrate' : undefined) : q.monetization
   const r = await call<{ results: unknown[] }>(`/discover/${spec.type}`, {
     sort_by: SORT_PARAM(spec.type, q.sort),
-    with_genres: ids.join(',') || undefined,
+    with_genres: withGenres || undefined,
+    without_genres: without.join(',') || undefined,
     with_type: spec.tvType,
     [`${df}.gte`]: q.yearFrom ? `${q.yearFrom}-01-01` : undefined,
     [`${df}.lte`]: q.yearTo ? `${q.yearTo}-12-31` : q.sort === 'recent' ? new Date().toISOString().slice(0, 10) : undefined,
@@ -214,9 +285,14 @@ async function discoverSpec(spec: Spec, q: Query, page: number, genres: GenreEnt
     'vote_count.gte': q.sort === 'rating' ? 300 : 100,
     with_watch_providers: q.providers.join('|') || undefined,
     watch_region: REGION,
-    with_watch_monetization_types: q.providers.length ? 'flatrate' : undefined,
-    'with_runtime.lte': spec.type === 'movie' ? q.maxRuntime : undefined,
+    with_watch_monetization_types: monetization,
+    'with_runtime.lte': spec.type === 'movie' ? q.maxRuntime : q.maxEpisode,
     with_original_language: q.lang,
+    with_origin_country: q.country,
+    with_status: spec.type === 'tv' ? (q.status === 'ended' ? 3 : q.status === 'ongoing' ? 0 : undefined) : undefined,
+    with_crew: spec.type === 'movie' ? q.director?.id : undefined,
+    certification_country: q.gentle && spec.type === 'movie' ? 'US' : undefined,
+    'certification.lte': q.gentle && spec.type === 'movie' ? 'PG-13' : undefined,
     page,
   })
   return clean(r.results.map((x) => mapTitle(x, spec.type)))
@@ -230,14 +306,17 @@ function sortTitles(list: Title[], s: Sort): Title[] {
 async function actorTitles(q: Query, genres: GenreEntry[]): Promise<Title[]> {
   const r = await call<{ cast: unknown[] }>(`/person/${q.actor!.id}/combined_credits`)
   const types = new Set(kindTypes(q.kinds))
-  const gEntry = q.genre ? genres.find((g) => g.name === q.genre) : undefined
+  const entries = q.genres.map((n) => genres.find((g) => g.name === n)).filter((x): x is GenreEntry => !!x)
   const seen = new Set<string>()
   return clean(r.cast.map((x) => mapTitle(x)))
     .filter((t) => {
       const k = t.type + t.id
       if (seen.has(k) || !t.poster || !types.has(t.type)) return false
       seen.add(k)
-      if (gEntry && !t.genreIds.includes(gEntry[t.type] ?? -1)) return false
+      if (entries.length) {
+        const has = entries.map((e) => t.genreIds.includes(e[t.type] ?? -1))
+        if (q.genreMode === 'any' ? !has.some(Boolean) : !has.every(Boolean)) return false
+      }
       if (q.yearFrom && t.year < q.yearFrom) return false
       if (q.yearTo && t.year > q.yearTo) return false
       if (t.rating < q.minTmdb) return false
@@ -264,6 +343,17 @@ export async function discover(q: Query, page: number): Promise<{ items: Title[]
   return { items: sortTitles(merged, q.sort), more: page < 20 && lists.some((l) => l.length > 0) }
 }
 
+/** Ricerca libera su discover con parametri grezzi (usata da "Scegli per me"). */
+export async function discoverRaw(type: MediaType, params: Params): Promise<Title[]> {
+  const r = await call<{ results: unknown[] }>(`/discover/${type}`, { watch_region: REGION, ...params })
+  return clean(r.results.map((x) => mapTitle(x, type))).filter((t) => t.poster)
+}
+
+export async function trending(): Promise<Title[]> {
+  const r = await call<{ results: unknown[] }>('/trending/all/week')
+  return clean(r.results.map((x) => mapTitle(x))).filter((t) => t.poster)
+}
+
 const basicCache = new Map<string, Promise<Title | null>>()
 
 /** Dati base di un titolo (locandina, trama) a partire dal suo id TMDB. */
@@ -272,7 +362,7 @@ export function titleById(type: MediaType, id: number): Promise<Title | null> {
   let p = basicCache.get(k)
   if (!p) {
     p = call<unknown>(`/${type}/${id}`)
-      .then((d) => mapTitle(d, type))
+      .then((d) => mapTitle({ ...(d as object), genre_ids: ((d as { genres?: { id: number }[] }).genres ?? []).map((g) => g.id) }, type))
       .catch(() => {
         basicCache.delete(k) // un errore non va ricordato: la prossima volta riprova
         return null
@@ -280,11 +370,6 @@ export function titleById(type: MediaType, id: number): Promise<Title | null> {
     basicCache.set(k, p)
   }
   return p
-}
-
-export async function trending(): Promise<Title[]> {
-  const r = await call<{ results: unknown[] }>('/trending/all/week')
-  return clean(r.results.map((x) => mapTitle(x))).filter((t) => t.poster)
 }
 
 export async function externalImdb(type: MediaType, id: number): Promise<string | null> {
@@ -297,21 +382,55 @@ export async function recommendations(type: MediaType, id: number): Promise<Titl
   return clean(r.results.map((x) => mapTitle(x, type)))
 }
 
+export async function similar(type: MediaType, id: number): Promise<Title[]> {
+  const r = await call<{ results: unknown[] }>(`/${type}/${id}/similar`)
+  return clean(r.results.map((x) => mapTitle(x, type)))
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapProviders = (list: any[] | undefined): Provider[] =>
+  (list ?? []).map((p) => ({ id: p.provider_id, name: p.provider_name, logo: p.logo_path }))
+
 export async function detail(type: MediaType, id: number): Promise<Detail> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const d: any = await call(`/${type}/${id}`, { append_to_response: 'credits,videos,watch/providers' })
+  const d: any = await call(`/${type}/${id}`, {
+    append_to_response: `credits,videos,watch/providers,${type === 'movie' ? 'release_dates' : 'content_ratings'}`,
+  })
   const base = mapTitle({ ...d, genre_ids: (d.genres ?? []).map((g: { id: number }) => g.id) }, type)!
   const prov = d['watch/providers']?.results?.[REGION]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const video = d.videos?.results?.find((v: any) => v.site === 'YouTube' && v.type === 'Trailer')
+
+  let certification: string | null = null
+  if (type === 'movie') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byCountry = (c: string) => d.release_dates?.results?.find((r: any) => r.iso_3166_1 === c)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cert = (byCountry('IT') ?? byCountry('US'))?.release_dates?.find((r: any) => r.certification)?.certification
+    certification = cert || null
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byCountry = (c: string) => d.content_ratings?.results?.find((r: any) => r.iso_3166_1 === c)
+    certification = (byCountry('IT') ?? byCountry('US'))?.rating || null
+  }
+
+  const runtimeMin: number | null = type === 'movie' ? d.runtime || null : null
+  const episodeRuntime: number | null = type === 'tv' ? d.episode_run_time?.[0] ?? d.last_episode_to_air?.runtime ?? null : null
   return {
     ...base,
     genres: (d.genres ?? []).map((g: { name: string }) => g.name),
     runtime: type === 'movie' ? (d.runtime ? `${d.runtime} min` : '') : d.number_of_seasons ? `${d.number_of_seasons} stagioni` : '',
+    runtimeMin,
+    seasons: type === 'tv' ? d.number_of_seasons ?? null : null,
+    episodes: type === 'tv' ? d.number_of_episodes ?? null : null,
+    episodeRuntime,
+    status: d.status ?? null,
+    certification,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     cast: (d.credits?.cast ?? []).slice(0, 12).map((c: any) => ({ id: c.id, name: c.name, character: c.character })),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    providers: (prov?.flatrate ?? []).map((p: any) => ({ id: p.provider_id, name: p.provider_name, logo: p.logo_path })),
+    providers: mapProviders(prov?.flatrate),
+    rent: mapProviders(prov?.rent),
+    buy: mapProviders(prov?.buy),
     trailer: video ? `https://www.youtube.com/watch?v=${video.key}` : null,
     link: prov?.link ?? null,
   }

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Title } from './tmdb'
 
-export type ListName = 'watchlist' | 'seen' | 'favorites'
+export type ListName = 'watchlist' | 'favorites' | 'seen' | 'started' | 'dropped' | 'hidden'
 export type Lists = Record<ListName, Title[]>
 
+export const LIST_NAMES: ListName[] = ['watchlist', 'favorites', 'seen', 'started', 'dropped', 'hidden']
+
 const KEY = 'lists_v1'
-const empty: Lists = { watchlist: [], seen: [], favorites: [] }
+const empty: Lists = { watchlist: [], favorites: [], seen: [], started: [], dropped: [], hidden: [] }
 
 function load(): Lists {
   try {
@@ -14,6 +16,8 @@ function load(): Lists {
     return empty
   }
 }
+
+export const keyOf = (t: Pick<Title, 'type' | 'id'>) => `${t.type}:${t.id}`
 
 export function useLists() {
   const [lists, setLists] = useState<Lists>(load)

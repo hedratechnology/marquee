@@ -23,7 +23,13 @@ function load(): View[] {
     if (!raw) return starter
     const list = JSON.parse(raw) as View[]
     // unisce ai valori di default per query salvate con versioni precedenti
-    return list.map((v) => ({ ...v, query: { ...emptyQuery, ...v.query } }))
+    return list.map((v) => {
+      const q = { ...emptyQuery, ...v.query } as Query & { genre?: string }
+      // versioni precedenti salvavano un solo genere
+      if (q.genre && !q.genres.length) q.genres = [q.genre]
+      delete q.genre
+      return { ...v, query: q }
+    })
   } catch {
     return starter
   }

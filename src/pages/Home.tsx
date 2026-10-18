@@ -4,8 +4,10 @@ import type { Title } from '../tmdb'
 import { requestRatings } from '../omdb'
 import { Empty, PosterCard, Rail, TitleRail, num } from '../ui/components'
 import { Icon } from '../ui/icons'
-import { useLists, useOpen } from '../ui/ctx'
 import { daysLabel } from '../ui/helpers'
+import { bestToTitle, useBest } from '../ui/data'
+
+export type Goto = 'pick' | 'like' | 'library' | 'together' | 'best' | 'explore' | 'settings'
 
 interface ExpiringItem {
   type: tmdb.MediaType
@@ -15,53 +17,6 @@ interface ExpiringItem {
   service: string
   serviceName: string
   expiresAt: number
-}
-
-interface BestLite {
-  type: tmdb.MediaType
-  id: number
-  title: string
-  year: string
-  date: string
-  poster: string | null
-  backdrop?: string | null
-  overview: string
-  genreIds: number[]
-  imdb: number | null
-  score: number
-}
-
-const asTitle = (i: BestLite): Title => ({
-  id: i.id, type: i.type, title: i.title, year: i.year, date: i.date, poster: i.poster, backdrop: i.backdrop,
-  rating: i.imdb ?? 0, popularity: 0, genreIds: i.genreIds, overview: i.overview,
-})
-
-function Hero({ t, onShuffle }: { t: Title; onShuffle: () => void }) {
-  const open = useOpen()
-  const { has, toggle } = useLists()
-  const watch = has('watchlist', t)
-  return (
-    <section className="hero" aria-label="Stasera">
-      {t.backdrop && <img key={t.id} src={`${tmdb.IMG}/w1280${t.backdrop}`} alt="" />}
-      <div className="hero-body">
-        <span className="eyebrow">Stasera</span>
-        <h1>{t.title}</h1>
-        <div className="meta-line">
-          <span>{t.type === 'movie' ? 'Film' : 'Serie'}</span>
-          {t.year && <span className="dot">{t.year}</span>}
-          {t.rating > 0 && <span className="dot">★ {num(t.rating)}</span>}
-        </div>
-        {t.overview && <p style={{ marginTop: 12 }}>{t.overview}</p>}
-        <div className="row">
-          <button className="btn gold" onClick={() => open(t)}><Icon name="play" size={16} fill /> Dettagli</button>
-          <button className={'btn' + (watch ? ' on' : '')} onClick={() => toggle('watchlist', t)}>
-            <Icon name={watch ? 'check' : 'plus'} size={16} /> Da vedere
-          </button>
-          <button className="iconbtn" onClick={onShuffle} aria-label="Un altro consiglio"><Icon name="shuffle" size={18} /></button>
-        </div>
-      </div>
-    </section>
-  )
 }
 
 function Expiring() {
@@ -128,25 +83,21 @@ function Expiring() {
   )
 }
 
-export function Home({ favorites, seen, goto }: { favorites: Title[]; seen: Title[]; goto: (tab: 'best' | 'settings' | 'explore') => void }) {
-  const [trend, setTrend] = useState<Title[]>([])
-  const [pick, setPick] = useState(0)
+function Entrance({ icon, title, text, onClick, accent }: { icon: string; title: string; text: string; onClick: () => void; accent?: boolean }) {
+  return (
+    <button className={'entrance' + (accent ? ' accent' : '')} onClick={onClick}>
+      <span className="eicon"><Icon name={icon} size={26} /></span>
+      <b>{title}</b>
+      <span>{text}</span>
+      <span className="go"><Icon name="arrow" size={18} /></span>
+    </button>
+  )
+}
+
+export function Home({ favorites, seen, goto, listCount }: { favorites: Title[]; seen: Title[]; goto: (t: Goto) => void; listCount: number }) {
   const [recs, setRecs] = useState<Title[]>([])
-  const [best, setBest] = useState<BestLite[]>([])
-  const [error, setError] = useState('')
+  const best = useBest()
   const hasKey = !!tmdb.getKey()
-
-  useEffect(() => {
-    if (!hasKey) return
-    tmdb.trending().then((r) => { setTrend(r); setPick(Math.floor(Math.random() * Math.min(8, r.length))); setError('') }).catch(() => setError('Non riesco a caricare i consigli. Controlla la chiave TMDB in Impostazioni.'))
-  }, [hasKey])
-
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}best.json`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setBest(d && Array.isArray(d.items) ? d.items : []))
-      .catch(() => setBest([]))
-  }, [])
 
   useEffect(() => {
     const base = favorites.slice(0, 8)
@@ -180,27 +131,35 @@ export function Home({ favorites, seen, goto }: { favorites: Title[]; seen: Titl
     )
   }
 
-  const heroList = trend.filter((t) => t.backdrop)
-  const hero = heroList.length ? heroList[pick % heroList.length] : undefined
-
   return (
     <>
-      {error && <p className="err">{error}</p>}
-      {hero && <Hero t={hero} onShuffle={() => setPick((p) => p + 1)} />}
+      <span className="eyebrow" style={{ display: 'block', marginTop: 18 }}>Stasera</span>
+      <h1 className="page-title hero-title">Cosa ti va di vedere?</h1>
+      <p className="lede">Scegli come arrivarci: in pochi minuti, senza scorrere cataloghi infiniti.</p>
+
+      <div className="entrances">
+        <Entrance accent icon="spark" title="Scegli per me" text="Umore, tempo e compagnia: tre proposte, con i motivi." onClick={() => goto('pick')} />
+        <Entrance icon="search" title="Ho voglia di qualcosa come…" text="Parti da un titolo oppure descrivi ciò che cerchi." onClick={() => goto('like')} />
+        <Entrance icon="bookmark" title="La mia lista" text={listCount ? `${listCount} titoli salvati, organizzati.` : 'Da vedere, preferiti, visti: tutto in ordine.'} onClick={() => goto('library')} />
+      </div>
+      <button className="banner" onClick={() => goto('together')}>
+        <Icon name="users" size={22} />
+        <span><b>Scegliamo insieme</b> Due persone, un punto d'incontro. Senza account.</span>
+        <Icon name="arrow" size={18} />
+      </button>
+
       <Expiring />
       <TitleRail title="Consigliati per te" items={recs} />
-      {best.length > 0 && (
+      {best && best.items.length > 0 && (
         <TitleRail
           title="Il meglio, secondo i numeri"
-          items={best.slice(0, 16).map(asTitle)}
+          items={best.items.slice(0, 16).map(bestToTitle)}
           action={<button className="link" onClick={() => goto('best')}>Vedi tutti</button>}
         />
       )}
-      <TitleRail
-        title="Di tendenza questa settimana"
-        items={trend}
-        action={<button className="link" onClick={() => goto('explore')}>Esplora</button>}
-      />
+      <p className="muted" style={{ marginTop: 28 }}>
+        Per esplorare liberamente tutto il catalogo con i filtri, vai su <button className="link" onClick={() => goto('explore')}>Esplora</button>.
+      </p>
     </>
   )
 }

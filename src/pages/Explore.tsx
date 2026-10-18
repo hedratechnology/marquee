@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as tmdb from '../tmdb'
-import type { Kind, Query, Title } from '../tmdb'
-import { getOmdbKey } from '../omdb'
-import { useRatings } from '../omdb'
+import type { Kind, Mood, Query, Title } from '../tmdb'
+import { getOmdbKey, useRatings } from '../omdb'
 import type { useViews } from '../views'
 import { MAX_VIEWS } from '../views'
+import { aiErrorText, getAiKey, nlToQuery, parseQuery } from '../ai'
+import { usePersonal } from '../personal'
 import { Chip, Empty, Range, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
 import { Icon } from '../ui/icons'
-import { errText, summary } from '../ui/helpers'
+import { activeChips, errText, summary } from '../ui/helpers'
 
 type ViewsApi = ReturnType<typeof useViews>
 
@@ -16,7 +17,7 @@ const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x 
 function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: () => void }) {
   const [name, setName] = useState('')
   return (
-    <Sheet title="Le tue viste" onClose={onClose}>
+    <Sheet title="Le tue ricerche salvate" onClose={onClose}>
       <p className="muted">Una vista è un insieme di filtri salvato con un nome. Ne puoi avere fino a {MAX_VIEWS}.</p>
       <div className="viewlist">
         {api.views.map((v, i) => (
@@ -35,30 +36,35 @@ function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: ()
       </div>
       {api.views.length < MAX_VIEWS ? (
         <div className="row" style={{ marginTop: 16 }}>
-          <input className="field" placeholder="Nome nuova vista" value={name} onChange={(e) => setName(e.target.value)} />
-          <button className="btn gold" disabled={!name.trim()} onClick={() => { api.add(name.trim(), q); setName('') }}>Salva filtri attuali</button>
+          <input className="field" placeholder="Nome nuova ricerca" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn gold" disabled={!name.trim()} onClick={() => { api.add(name.trim(), q); setName('') }}>Salva i filtri attuali</button>
         </div>
       ) : (
-        <p className="muted" style={{ marginTop: 14 }}>Hai raggiunto il massimo di {MAX_VIEWS} viste: eliminane una per aggiungerne un'altra.</p>
+        <p className="muted" style={{ marginTop: 14 }}>Hai raggiunto il massimo di {MAX_VIEWS}: eliminane una per aggiungerne un'altra.</p>
       )}
     </Sheet>
   )
 }
 
-function FilterSheet({ q, set, reset, count, onClose }: {
-  q: Query; set: (p: Partial<Query>) => void; reset: () => void; count: number; onClose: () => void
+function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
+  q: Query; set: (p: Partial<Query>) => void; reset: () => void; count: number; onClose: () => void; hasMine: boolean
 }) {
   const [genres, setGenres] = useState<tmdb.GenreEntry[]>([])
   const [actorQ, setActorQ] = useState('')
+  const [dirQ, setDirQ] = useState('')
   const [sugg, setSugg] = useState<{ id: number; name: string }[]>([])
+  const [suggFor, setSuggFor] = useState<'actor' | 'director'>('actor')
   useEffect(() => {
     tmdb.genreList().then(setGenres).catch(() => setGenres([]))
   }, [])
   const types = tmdb.kindTypes(q.kinds)
   const options = genres.filter((g) => types.some((t) => g[t] !== undefined))
+  const hasSeries = q.kinds.some((k) => k === 'series' || k === 'miniseries')
 
-  async function findActor(v: string) {
-    setActorQ(v)
+  async function find(v: string, who: 'actor' | 'director') {
+    if (who === 'actor') setActorQ(v)
+    else setDirQ(v)
+    setSuggFor(who)
     if (v.length < 2) return setSugg([])
     try {
       setSugg(await tmdb.searchPerson(v))
@@ -73,16 +79,46 @@ function FilterSheet({ q, set, reset, count, onClose }: {
         <span className="eyebrow">Tipo</span>
         <div className="row">
           {tmdb.KINDS.map((k) => (
-            <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genre: undefined }) : undefined)}>{k.label}</Chip>
+            <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
           ))}
         </div>
       </div>
       <div className="group">
-        <span className="eyebrow">Piattaforme in Italia</span>
+        <span className="eyebrow">Umore</span>
         <div className="row">
-          {tmdb.PROVIDERS.map((p) => (
-            <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggleIn(q.providers, p.id) })}>{p.name}</Chip>
-          ))}
+          {tmdb.MOODS.map((m) => <Chip key={m.id} on={q.moods.includes(m.id)} onClick={() => set({ moods: toggleIn<Mood>(q.moods, m.id) })}>{m.label}</Chip>)}
+        </div>
+        <p className="muted" style={{ marginTop: 8 }}>L'umore è una stima basata sui generi.</p>
+      </div>
+      <div className="group">
+        <span className="eyebrow">Generi</span>
+        <div className="row">
+          {options.map((g) => <Chip key={g.name} on={q.genres.includes(g.name)} onClick={() => set({ genres: toggleIn(q.genres, g.name) })}>{g.name}</Chip>)}
+        </div>
+        {q.genres.length > 1 && (
+          <div className="row" style={{ marginTop: 10 }}>
+            <Chip on={q.genreMode === 'all'} onClick={() => set({ genreMode: 'all' })}>Tutti insieme</Chip>
+            <Chip on={q.genreMode === 'any'} onClick={() => set({ genreMode: 'any' })}>Almeno uno</Chip>
+          </div>
+        )}
+      </div>
+      <div className="group">
+        <span className="eyebrow">Dove guardarlo, in Italia</span>
+        <div className="row">
+          {tmdb.PROVIDERS.map((p) => <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggleIn(q.providers, p.id) })}>{p.name}</Chip>)}
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          {hasMine ? (
+            <Chip on={q.onlyMine} onClick={() => set({ onlyMine: !q.onlyMine })}>Solo i miei abbonamenti</Chip>
+          ) : (
+            <span className="muted">Indica i tuoi abbonamenti in Impostazioni per usarli come filtro.</span>
+          )}
+          <select className="field" value={q.monetization} onChange={(e) => set({ monetization: e.target.value as Query['monetization'] })} aria-label="Disponibilità">
+            <option value="any">Qualsiasi disponibilità</option>
+            <option value="flatrate">Incluso nell'abbonamento</option>
+            <option value="rent">Da noleggiare</option>
+            <option value="buy">Da comprare</option>
+          </select>
         </div>
         {q.actor && q.providers.length > 0 && <p className="muted">Con un attore selezionato le piattaforme non si applicano.</p>}
       </div>
@@ -95,41 +131,67 @@ function FilterSheet({ q, set, reset, count, onClose }: {
         <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
       </div>
       <div className="group">
-        <span className="eyebrow">Genere, lingua, durata</span>
+        <span className="eyebrow">Durata e ritmo</span>
         <div className="row">
-          <select className="field" value={q.genre ?? ''} onChange={(e) => set({ genre: e.target.value || undefined })}>
-            <option value="">Tutti i generi</option>
-            {options.map((g) => <option key={g.name} value={g.name}>{g.name}</option>)}
+          <select className="field" value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })} aria-label="Durata dei film">
+            <option value={0}>Film: ogni durata</option>
+            <option value={90}>Film sotto 90 min</option>
+            <option value={100}>Film sotto 100 min</option>
+            <option value={120}>Film sotto 2 ore</option>
+            <option value={150}>Film sotto 2 ore e mezza</option>
           </select>
-          <select className="field" value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })}>
+          <select className="field" value={q.maxEpisode ?? 0} onChange={(e) => set({ maxEpisode: +e.target.value || undefined })} aria-label="Durata degli episodi">
+            <option value={0}>Episodi: ogni durata</option>
+            <option value={30}>Episodi sotto 30 min</option>
+            <option value={45}>Episodi sotto 45 min</option>
+            <option value={60}>Episodi sotto 1 ora</option>
+          </select>
+        </div>
+        {hasSeries && (
+          <div className="row" style={{ marginTop: 10 }}>
+            <Chip on={q.status === 'ended'} onClick={() => set({ status: q.status === 'ended' ? undefined : 'ended' })}>Serie concluse</Chip>
+            <Chip on={q.status === 'ongoing'} onClick={() => set({ status: q.status === 'ongoing' ? undefined : 'ongoing' })}>Serie in corso</Chip>
+          </div>
+        )}
+        <div className="row" style={{ marginTop: 10 }}>
+          <Chip on={q.gentle} onClick={() => set({ gentle: !q.gentle })}>Poco violento</Chip>
+        </div>
+        <p className="muted" style={{ marginTop: 8 }}>«Poco violento» esclude horror e guerra e, per i film, le classificazioni più dure: è una stima.</p>
+      </div>
+      <div className="group">
+        <span className="eyebrow">Paese, lingua, anno</span>
+        <div className="row">
+          <select className="field" value={q.country ?? ''} onChange={(e) => set({ country: e.target.value || undefined })} aria-label="Paese">
+            <option value="">Ogni paese</option>
+            {tmdb.COUNTRIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+          <select className="field" value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })} aria-label="Lingua">
             <option value="">Ogni lingua</option>
             {tmdb.LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
           </select>
-          <select className="field" value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })}>
-            <option value={0}>Ogni durata</option>
-            <option value={100}>Film sotto 100 min</option>
-            <option value={120}>Film sotto 120 min</option>
-            <option value={150}>Film sotto 150 min</option>
-          </select>
         </div>
-      </div>
-      <div className="group">
-        <span className="eyebrow">Anno</span>
-        <div className="row">
+        <div className="row" style={{ marginTop: 10 }}>
           <input className="field" type="number" inputMode="numeric" placeholder="Dal" value={q.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value || undefined })} />
           <input className="field" type="number" inputMode="numeric" placeholder="Al" value={q.yearTo ?? ''} onChange={(e) => set({ yearTo: e.target.value || undefined })} />
         </div>
       </div>
       <div className="group">
-        <span className="eyebrow">Attore o attrice</span>
-        {q.actor ? (
-          <button className="btn on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>{q.actor.name} <Icon name="x" size={14} /></button>
-        ) : (
-          <input style={{ width: '100%' }} placeholder="Cerca un nome…" value={actorQ} onChange={(e) => findActor(e.target.value)} />
-        )}
-        {!q.actor && sugg.length > 0 && (
+        <span className="eyebrow">Persone</span>
+        <div className="row">
+          {q.actor ? (
+            <button className="btn on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>Con {q.actor.name} <Icon name="x" size={14} /></button>
+          ) : (
+            <input className="field" placeholder="Attore o attrice…" value={actorQ} onChange={(e) => find(e.target.value, 'actor')} />
+          )}
+          {q.director ? (
+            <button className="btn on" onClick={() => { set({ director: undefined }); setDirQ('') }}>Regia di {q.director.name} <Icon name="x" size={14} /></button>
+          ) : (
+            <input className="field" placeholder="Regista (solo film)…" value={dirQ} onChange={(e) => find(e.target.value, 'director')} />
+          )}
+        </div>
+        {sugg.length > 0 && (
           <div className="row" style={{ marginTop: 10 }}>
-            {sugg.map((s) => <Chip key={s.id} onClick={() => { set({ actor: s }); setSugg([]) }}>{s.name}</Chip>)}
+            {sugg.map((s) => <Chip key={s.id} onClick={() => { set(suggFor === 'actor' ? { actor: s } : { director: s }); setSugg([]) }}>{s.name}</Chip>)}
           </div>
         )}
       </div>
@@ -152,7 +214,11 @@ function FilterSheet({ q, set, reset, count, onClose }: {
   )
 }
 
-export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsApi; active: boolean }) {
+export function Explore({ seen, views, active, request }: {
+  seen: Title[]; views: ViewsApi; active: boolean; request: { id: number; query: Query; info?: string } | null
+}) {
+  const personal = usePersonal()
+  const mine = personal.prefs.providers
   const [q, setQ] = useState<Query>(tmdb.emptyQuery)
   const [activeView, setActiveView] = useState<string | null>(null)
   const [items, setItems] = useState<Title[]>([])
@@ -162,7 +228,10 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
   const [err, setErr] = useState('')
   const [filters, setFilters] = useState(false)
   const [manage, setManage] = useState(false)
+  const [phrase, setPhrase] = useState('')
+  const [nl, setNl] = useState<{ busy: boolean; err: string; info: string; notes: string[] }>({ busy: false, err: '', info: '', notes: [] })
   const reqId = useRef(0)
+  const lastRequest = useRef(0)
   const R = useRatings()
 
   const load = useCallback(async (query: Query, p: number) => {
@@ -182,8 +251,19 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
     }
   }, [])
 
-  // Punteggi e "nascondi visti" si applicano lato client: non rifanno la chiamata
-  const serverKey = JSON.stringify({ ...q, minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false })
+  // richieste dall'esterno (frase libera dalla schermata "Ho voglia di…")
+  useEffect(() => {
+    if (request && request.id !== lastRequest.current) {
+      lastRequest.current = request.id
+      setQ(request.query)
+      setActiveView(null)
+      if (request.info) setNl({ busy: false, err: '', info: request.info, notes: [] })
+    }
+  }, [request])
+
+  // "solo i miei abbonamenti" si traduce nelle piattaforme salvate; punteggi e visti si applicano lato client
+  const effective: Query = { ...q, providers: q.onlyMine && mine.length ? mine : q.providers, minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false }
+  const serverKey = JSON.stringify(effective)
   useEffect(() => {
     load(JSON.parse(serverKey), 1)
   }, [serverKey, load])
@@ -217,25 +297,50 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
     setActiveView(null)
     setQ((c) => ({ ...c, ...p }))
   }
-  const activeCount =
-    (q.genre ? 1 : 0) + (q.providers.length ? 1 : 0) + (q.yearFrom || q.yearTo ? 1 : 0) + (q.actor ? 1 : 0) +
-    (q.minImdb ? 1 : 0) + (q.minRt ? 1 : 0) + (q.minMeta ? 1 : 0) + (q.minTmdb ? 1 : 0) +
-    (q.maxRuntime ? 1 : 0) + (q.lang ? 1 : 0) + (q.hideSeen ? 1 : 0)
+  const chips = activeChips(q)
+
+  async function runPhrase() {
+    const text = phrase.trim()
+    if (!text) return
+    if (!getAiKey()) {
+      setNl({ busy: false, err: 'Per cercare con una frase serve la chiave Anthropic: la inserisci in Impostazioni.', info: '', notes: [] })
+      return
+    }
+    setNl({ busy: true, err: '', info: '', notes: [] })
+    try {
+      const genres = await tmdb.genreList()
+      const parsed = await parseQuery(text, genres, personal.prefs.aiModel)
+      const applied = await nlToQuery(parsed, genres, mine)
+      setQ(applied.query)
+      setActiveView(null)
+      setNl({ busy: false, err: '', info: applied.summary, notes: applied.notes })
+    } catch (e) {
+      setNl({ busy: false, err: aiErrorText(e), info: '', notes: [] })
+    }
+  }
 
   return (
     <>
       <div className="row between">
         <h1 className="page-title">Esplora</h1>
         <div className="row">
-          <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le viste"><Icon name="edit" size={18} /></button>
-          <button className={'btn' + (activeCount ? ' on' : '')} onClick={() => setFilters(true)}>
-            <Icon name="filter" size={18} /> Filtri{activeCount ? ` · ${activeCount}` : ''}
+          <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le ricerche salvate"><Icon name="edit" size={18} /></button>
+          <button className={'btn' + (chips.length ? ' on' : '')} onClick={() => setFilters(true)}>
+            <Icon name="filter" size={18} /> Filtri{chips.length ? ` · ${chips.length}` : ''}
           </button>
         </div>
       </div>
 
-      <div className="pills" role="tablist" aria-label="Le tue viste">
-        <button className={'pill' + (activeView === null && activeCount === 0 ? ' on' : '')} onClick={() => { setQ(tmdb.emptyQuery); setActiveView(null) }}>Tutto</button>
+      <form className="nlbox" onSubmit={(e) => { e.preventDefault(); runPhrase() }}>
+        <Icon name="spark" size={18} />
+        <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="Descrivi cosa vuoi: «una serie misteriosa, poco violenta, episodi brevi»" aria-label="Descrivi cosa vuoi vedere" />
+        <button className="btn gold sm" type="submit" disabled={nl.busy || !phrase.trim()}>{nl.busy ? 'Leggo…' : 'Cerca'}</button>
+      </form>
+      {nl.err && <p className="err">{nl.err}</p>}
+      {nl.info && <p className="muted"><b>Ho capito:</b> {nl.info}{nl.notes.length > 0 && <> · {nl.notes.join(' ')}</>}</p>}
+
+      <div className="pills" role="tablist" aria-label="Le tue ricerche salvate">
+        <button className={'pill' + (activeView === null && chips.length === 0 ? ' on' : '')} onClick={() => { setQ(tmdb.emptyQuery); setActiveView(null); setNl({ busy: false, err: '', info: '', notes: [] }) }}>Tutto</button>
         {views.views.map((v) => (
           <button key={v.id} role="tab" aria-selected={activeView === v.id} className={'pill' + (activeView === v.id ? ' on' : '')} onClick={() => { setQ(v.query); setActiveView(v.id) }}>
             {v.name}
@@ -243,11 +348,23 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
         ))}
       </div>
 
-      <div className="row" style={{ margin: '14px 0 20px' }}>
+      <div className="row" style={{ margin: '14px 0 8px' }}>
         {tmdb.KINDS.map((k) => (
-          <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genre: undefined }) : undefined)}>{k.label}</Chip>
+          <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
         ))}
       </div>
+
+      {chips.length > 0 && (
+        <div className="row activechips" aria-label="Filtri attivi">
+          {chips.map((c) => (
+            <button key={c.key} className="achip" onClick={() => set(c.clear)} aria-label={`Togli il filtro ${c.label}`}>
+              {c.label} <Icon name="x" size={12} />
+            </button>
+          ))}
+          <button className="link" onClick={() => setManage(true)}>Salva questa ricerca</button>
+        </div>
+      )}
+      <div style={{ height: 14 }} />
 
       {err && <p className="err">{err}</p>}
       {ratingFilter && R.limited && <p className="err">Limite giornaliero OMDb raggiunto: i filtri sui punteggi usano solo i titoli già controllati.</p>}
@@ -258,7 +375,7 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
       ) : (
         <TitleGrid
           items={visible}
-          empty={<Empty title="Nessun titolo" text={ratingFilter && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova ad allargare i filtri.'} />}
+          empty={<Empty title="Nessun titolo" text={ratingFilter && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'} />}
         />
       )}
       {more && items.length > 0 && !q.actor && (
@@ -267,7 +384,7 @@ export function Explore({ seen, views, active }: { seen: Title[]; views: ViewsAp
         </div>
       )}
 
-      {filters && <FilterSheet q={q} set={set} reset={() => { setActiveView(null); setQ(tmdb.emptyQuery) }} count={visible.length} onClose={() => setFilters(false)} />}
+      {filters && <FilterSheet q={q} set={set} reset={() => { setActiveView(null); setQ(tmdb.emptyQuery) }} count={visible.length} hasMine={mine.length > 0} onClose={() => setFilters(false)} />}
       {manage && <ManageViews api={views} q={q} onClose={() => setManage(false)} />}
     </>
   )
