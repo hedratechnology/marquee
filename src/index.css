@@ -724,3 +724,12 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .card .meta .plat > span, .pinfo .plat > span { display: inline; margin: 0; color: inherit; font-size: inherit; -webkit-line-clamp: unset; }
 .pmain { cursor: pointer; }
 .logos a { display: inline-block; }
+
+/* selezione sempre ben visibile: riempimento a tinta piena, testo scuro */
+:root { --sel: #8ab4ff; }
+.mode2 button.on, .seg button.on, .chip.on, .pill.on, .opt.on, .btn.on, .topnav button.on, .dock button.on {
+  background: var(--sel); color: #0b1020; border-color: var(--sel); box-shadow: none; font-weight: 650;
+}
+.opt.on * { color: inherit; }
+.pbtn.on { background: var(--sel); color: #0b1020; border-color: var(--sel); }
+.mode2 button.on svg, .chip.on svg { color: inherit; }
