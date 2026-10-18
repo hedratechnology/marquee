@@ -49,3 +49,11 @@ export function loadAwards(): Promise<AwardsFile | null> {
     .catch(() => null)
   return promise
 }
+
+let indexPromise: Promise<Map<string, string[]> | null> | null = null
+
+/** "tipo:id" -> chiavi dei premi vinti, per filtrare qualsiasi elenco di titoli. */
+export function loadAwardIndex(): Promise<Map<string, string[]> | null> {
+  indexPromise ??= loadAwards().then((f) => (f ? new Map(f.items.map((i) => [`${i.type}:${i.id}`, Object.keys(i.awards)])) : null))
+  return indexPromise
+}

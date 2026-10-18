@@ -5,6 +5,8 @@ import { requestRatings } from '../omdb'
 import { Empty, PosterCard, Rail, TitleRail, num } from '../ui/components'
 import { Icon } from '../ui/icons'
 import { daysLabel } from '../ui/helpers'
+import { useFilters, useReportCount } from '../filters'
+import { matchesQuery, useFilterEnv } from '../filtering'
 import { bestToTitle, useBest } from '../ui/data'
 
 export type Goto = 'pick' | 'like' | 'library' | 'together' | 'best' | 'explore' | 'settings'
@@ -13,13 +15,19 @@ interface ExpiringItem {
   type: tmdb.MediaType
   id: number
   title: string
+  year?: number | null
   imdb: number | null
   service: string
   serviceName: string
   expiresAt: number
 }
 
-function Expiring() {
+/** Piattaforme di TMDB -> servizi dell'elenco delle scadenze. */
+const SERVICE_OF: Record<number, string> = { 8: 'netflix', 119: 'prime', 337: 'disney', 350: 'apple', 531: 'paramount', 39: 'now', 11: 'mubi', 283: 'crunchyroll' }
+
+function Expiring({ onCount }: { onCount: (n: number) => void }) {
+  const F = useFilters()
+  const env = useFilterEnv(F.q)
   const [data, setData] = useState<{ generatedAt: string; items: ExpiringItem[] } | null>(null)
   const [min, setMin] = useState(() => Number(localStorage.getItem('exp_min') ?? 7))
   const [service, setService] = useState('')
@@ -33,14 +41,24 @@ function Expiring() {
   }, [])
 
   const now = Date.now() / 1000
-  const shown = (data?.items ?? [])
-    .filter((i) => i.expiresAt >= now && (i.imdb ?? 0) >= min && (!service || i.service === service))
-    .slice(0, 16)
-  const shownKey = shown.map((i) => i.type + i.id).join(',')
+  // prima i filtri che si valutano dai dati delle scadenze: voto, servizio, tipo, anno, piattaforme
+  const candidates = (data?.items ?? [])
+    .filter((i) => {
+      if (i.expiresAt < now || (i.imdb ?? 0) < Math.max(min, F.q.minImdb)) return false
+      if (service && i.service !== service) return false
+      if (!tmdb.kindTypes(F.q.kinds).includes(i.type)) return false
+      if (F.q.yearFrom && i.year && String(i.year) < F.q.yearFrom) return false
+      if (F.q.yearTo && i.year && String(i.year) > F.q.yearTo) return false
+      const wanted = F.q.providers.map((p) => SERVICE_OF[p]).filter(Boolean)
+      if (F.q.providers.length && wanted.length && !wanted.includes(i.service)) return false
+      return true
+    })
+    .slice(0, 40)
+  const candKey = candidates.map((i) => i.type + i.id).join(',')
 
   useEffect(() => {
     let live = true
-    Promise.all(shown.map((i) => tmdb.titleById(i.type, i.id))).then((list) => {
+    Promise.all(candidates.map((i) => tmdb.titleById(i.type, i.id))).then((list) => {
       if (!live) return
       setTitles(Object.fromEntries(list.filter((t): t is Title => !!t).map((t) => [t.type + t.id, t])))
     })
@@ -48,8 +66,19 @@ function Expiring() {
       live = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownKey])
+  }, [candKey])
 
+  // poi quelli che servono i dettagli del titolo: generi, umore, premi
+  const needsTitle = F.q.genres.length > 0 || F.q.moods.length > 0 || F.q.awards.length > 0 || F.q.minTmdb > 0
+  const shown = candidates
+    .filter((i) => {
+      const t = titles[i.type + i.id]
+      if (!t) return !needsTitle
+      return matchesQuery({ type: t.type, id: t.id, year: t.year, genreIds: t.genreIds ?? [], rating: t.rating, imdb: i.imdb ?? undefined }, { ...F.q, minImdb: 0, kinds: F.q.kinds }, env)
+    })
+    .slice(0, 16)
+
+  useEffect(() => onCount(shown.length), [shown.length, onCount])
   if (!data?.items.length) return null
   const services = [...new Map(data.items.map((i) => [i.service, i.serviceName])).entries()]
 
@@ -94,7 +123,10 @@ function Entrance({ icon, title, text, onClick, accent }: { icon: string; title:
   )
 }
 
-export function Home({ favorites, seen, goto, listCount }: { favorites: Title[]; seen: Title[]; goto: (t: Goto) => void; listCount: number }) {
+export function Home({ favorites, seen, goto, listCount, active }: { favorites: Title[]; seen: Title[]; goto: (t: Goto) => void; listCount: number; active: boolean }) {
+  const F = useFilters()
+  const env = useFilterEnv(F.q)
+  const [expiringCount, setExpiringCount] = useState(0)
   const [recs, setRecs] = useState<Title[]>([])
   const best = useBest()
   const hasKey = !!tmdb.getKey()
@@ -120,6 +152,14 @@ export function Home({ favorites, seen, goto, listCount }: { favorites: Title[];
       requestRatings(out)
     })
   }, [favorites, seen, hasKey])
+
+  const recsF = recs.filter((t) => matchesQuery(t, F.q, env))
+  const bestF = (best?.items ?? []).filter((i) => matchesQuery({ type: i.type, id: i.id, year: i.year, genreIds: i.genreIds, rating: i.imdb ?? 0, lang: i.lang, imdb: i.imdb, rt: i.rt, meta: i.meta }, F.q, env))
+  const ratingFilter = !!(F.q.minImdb || F.q.minRt || F.q.minMeta)
+  useEffect(() => {
+    if (ratingFilter) requestRatings(recs)
+  }, [ratingFilter, recs])
+  useReportCount(hasKey ? recsF.length + Math.min(bestF.length, 16) + expiringCount : null, false, active)
 
   if (!hasKey) {
     return (
@@ -148,12 +188,12 @@ export function Home({ favorites, seen, goto, listCount }: { favorites: Title[];
         <Icon name="arrow" size={18} />
       </button>
 
-      <Expiring />
-      <TitleRail title="Consigliati per te" items={recs} />
-      {best && best.items.length > 0 && (
+      <Expiring onCount={setExpiringCount} />
+      <TitleRail title="Consigliati per te" items={recsF} />
+      {bestF.length > 0 && (
         <TitleRail
           title="Il meglio, secondo i numeri"
-          items={best.items.slice(0, 16).map(bestToTitle)}
+          items={bestF.slice(0, 16).map(bestToTitle)}
           action={<button className="link" onClick={() => goto('best')}>Vedi tutti</button>}
         />
       )}

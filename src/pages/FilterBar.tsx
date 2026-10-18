@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as tmdb from '../tmdb'
-import type { Kind, Mood, Query, Title } from '../tmdb'
+import type { Kind, Mood, Query } from '../tmdb'
 import { AWARD_OPTIONS } from '../awards'
 import { getOmdbKey } from '../omdb'
-import { Chip, Range, Sheet } from '../ui/components'
+import { Chip, Range } from '../ui/components'
 import { Icon } from '../ui/icons'
-import { activeChips } from '../ui/helpers'
+import { useFilters } from '../filters'
+import { usePersonal } from '../personal'
 
 const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 const THIS_YEAR = new Date().getFullYear()
@@ -86,23 +87,13 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
   )
 }
 
-interface Props {
-  q: Query
-  /** filtri di partenza (con gli abbonamenti già selezionati) */
-  base: Query
-  set: (p: Partial<Query>) => void
-  reset: () => void
-  count: number
-  preview: Title[]
-  loading: boolean
-  /** abbonamenti salvati in Impostazioni */
-  savedProviders: number[]
-  onSaveProviders: (ids: number[]) => void
-  onClose: () => void
-}
-
-/** Lo strumento dei filtri: categorie a sinistra, controlli al centro, anteprima dal vivo a destra. */
-export function FilterStudio({ q, base, set, reset, count, preview, loading, savedProviders, onSaveProviders, onClose }: Props) {
+/** La barra dei filtri: si apre sotto l'intestazione e i risultati sotto si aggiornano in diretta. */
+export function FilterBar() {
+  const F = useFilters()
+  const personal = usePersonal()
+  const { q, set, reset, stats, chips } = F
+  const savedProviders = personal.prefs.providers
+  const onSaveProviders = (ids: number[]) => personal.setPrefs({ providers: ids })
   const hasMine = savedProviders.length > 0
   const [cat, setCat] = useState<CatId>('what')
   const [genres, setGenres] = useState<tmdb.GenreEntry[]>([])
@@ -115,7 +106,6 @@ export function FilterStudio({ q, base, set, reset, count, preview, loading, sav
     tmdb.genreList().then(setGenres).catch(() => setGenres([]))
   }, [])
 
-  const chips = activeChips(q, base)
   const counts: Record<CatId, number> = { what: 0, where: 0, score: 0, time: 0, who: 0, order: 0 }
   for (const c of chips) counts[catOf(c.key)]++
   const current = CATS.find((c) => c.id === cat)!
@@ -313,74 +303,41 @@ export function FilterStudio({ q, base, set, reset, count, preview, loading, sav
     ),
   }
 
-  return (
-    <Sheet
-      onClose={onClose}
-      className="studio"
-      foot={
-        <>
-          <button className="btn" onClick={reset} data-tip="Torna ai filtri di partenza">Azzera tutto{chips.length ? ` · ${chips.length}` : ''}</button>
-          <button className="btn gold" onClick={onClose}>{loading ? 'Cerco…' : `Mostra ${count} titoli`}</button>
-        </>
-      }
-    >
-      <div className="studio-head">
-        <h2>Filtri</h2>
-        <div className="presets" role="group" aria-label="Scorciatoie">
-          {PRESETS.map((p) => (
-            <button key={p.id} className="preset" style={{ ['--c' as string]: p.color }} onClick={() => set(p.patch)} data-tip="Applica questa scorciatoia">
-              <i />{p.label}
-            </button>
-          ))}
-        </div>
-        <button className="iconbtn" onClick={onClose} aria-label="Chiudi" data-tip="Chiudi"><Icon name="x" /></button>
-      </div>
+  if (!F.open) return null
 
-      <div className="studio-body">
-        <nav className="studio-nav" aria-label="Categorie dei filtri">
+  return (
+    <div className="fbar" role="region" aria-label="Filtri">
+      <div className="fbar-top">
+        <nav className="fbar-tabs" aria-label="Categorie dei filtri">
           {CATS.map((c) => (
-            <button key={c.id} className={'cat' + (c.id === cat ? ' on' : '')} style={{ ['--c' as string]: c.color }} aria-current={c.id === cat} onClick={() => setCat(c.id)}>
-              <span className="ci"><Icon name={c.icon} size={18} /></span>
-              <span className="ct"><b>{c.label}</b><small>{c.hint}</small></span>
+            <button key={c.id} className={'ftab' + (c.id === cat ? ' on' : '')} style={{ ['--c' as string]: c.color }} aria-current={c.id === cat} onClick={() => setCat(c.id)}>
+              <span className="ci"><Icon name={c.icon} size={16} /></span>
+              <b>{c.label}</b>
               {counts[c.id] > 0 && <span className="badge">{counts[c.id]}</span>}
             </button>
           ))}
         </nav>
-
-        <div className="studio-content" style={{ ['--c' as string]: current.color }}>
-          <div className="cat-title"><span style={{ background: current.color }} />{current.label}</div>
-          {panels[cat]}
+        <div className="fbar-actions">
+          <span className="fcount" aria-live="polite">
+            {stats.loading ? 'Cerco…' : stats.count === null ? '' : `${stats.count} ${stats.count === 1 ? 'titolo' : 'titoli'}`}
+          </span>
+          <button className="btn sm" onClick={reset} data-tip="Torna ai filtri di partenza">Azzera{chips.length ? ` · ${chips.length}` : ''}</button>
+          <button className="iconbtn sm" onClick={() => F.setOpen(false)} aria-label="Chiudi i filtri" data-tip="Chiudi i filtri"><Icon name="up" size={18} /></button>
         </div>
-
-        <aside className="studio-preview" aria-label="Anteprima dei risultati">
-          <div className="pv-count">
-            <b>{loading ? '…' : count}</b>
-            <span>{count === 1 ? 'titolo' : 'titoli'}</span>
-          </div>
-          <div className="pv-grid">
-            {loading && preview.length === 0
-              ? Array.from({ length: 9 }, (_, i) => <div key={i} className="skel" />)
-              : preview.slice(0, 9).map((t) => (
-                  <div key={t.type + t.id} className="pv-th" title={t.title}>
-                    {t.poster ? <img src={`${tmdb.IMG}/w154${t.poster}`} alt={t.title} /> : <span>{t.title}</span>}
-                  </div>
-                ))}
-          </div>
-          {!loading && count === 0 && <p className="blk-h">Nessun risultato: prova a togliere qualche filtro.</p>}
-          {chips.length > 0 && (
-            <>
-              <div className="pv-label">Filtri attivi</div>
-              <div className="row">
-                {chips.map((c) => (
-                  <button key={c.key} className="achip" onClick={() => set(c.clear)} aria-label={`Togli il filtro ${c.label}`} data-tip="Togli questo filtro">
-                    {c.label} <Icon name="x" size={12} />
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </aside>
       </div>
-    </Sheet>
+
+      <div className="fbar-presets" role="group" aria-label="Scorciatoie">
+        <span className="pv-label">Scorciatoie</span>
+        {PRESETS.map((p) => (
+          <button key={p.id} className="preset" style={{ ['--c' as string]: p.color }} onClick={() => set(p.patch)} data-tip="Applica questa scorciatoia">
+            <i />{p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="fbar-body" style={{ ['--c' as string]: current.color }}>
+        <div className="bgrid">{panels[cat]}</div>
+      </div>
+    </div>
   )
 }

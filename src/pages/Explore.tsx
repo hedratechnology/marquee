@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as tmdb from '../tmdb'
 import type { Kind, Query, Title } from '../tmdb'
 import { requestRatings, useRatings } from '../omdb'
@@ -7,10 +7,11 @@ import type { useViews } from '../views'
 import { MAX_VIEWS } from '../views'
 import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
+import { useFilters, useReportCount } from '../filters'
 import { Chip, Empty, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
+import { useLists } from '../ui/ctx'
 import { Icon } from '../ui/icons'
-import { activeChips, errText, summary } from '../ui/helpers'
-import { FilterStudio } from './FilterStudio'
+import { errText, summary } from '../ui/helpers'
 
 type ViewsApi = ReturnType<typeof useViews>
 
@@ -48,35 +49,21 @@ function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: ()
   )
 }
 
-export function Explore({ seen, views, active, request }: {
-  seen: Title[]; views: ViewsApi; active: boolean; request: { id: number; query: Query; info?: string } | null
-}) {
+export function Explore({ views, active }: { views: ViewsApi; active: boolean }) {
+  const F = useFilters()
+  const { q, base, set, setQuery, reset, viewId, note, isFiltered } = F
   const personal = usePersonal()
+  const { lists } = useLists()
   const mine = personal.prefs.providers
-  // di partenza gli abbonamenti salvati in Impostazioni sono già selezionati
-  const def = useMemo<Query>(
-    () => ({ ...tmdb.emptyQuery, providers: personal.prefs.useMine ? personal.prefs.providers : [] }),
-    [personal.prefs.useMine, personal.prefs.providers],
-  )
-  const [q, setQ] = useState<Query>(def)
-  const lastDef = useRef(def)
-  useEffect(() => {
-    // se cambi gli abbonamenti in Impostazioni e non hai ancora toccato le piattaforme, si aggiornano anche qui
-    setQ((c) => (JSON.stringify(c.providers) === JSON.stringify(lastDef.current.providers) ? { ...c, providers: def.providers } : c))
-    lastDef.current = def
-  }, [def])
-  const [activeView, setActiveView] = useState<string | null>(null)
   const [items, setItems] = useState<Title[]>([])
   const [page, setPage] = useState(1)
   const [more, setMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
-  const [filters, setFilters] = useState(false)
   const [manage, setManage] = useState(false)
   const [phrase, setPhrase] = useState('')
-  const [nl, setNl] = useState<{ busy: boolean; err: string; info: string; notes: string[] }>({ busy: false, err: '', info: '', notes: [] })
+  const [nl, setNl] = useState<{ busy: boolean; err: string }>({ busy: false, err: '' })
   const reqId = useRef(0)
-  const lastRequest = useRef(0)
   const R = useRatings()
 
   const load = useCallback(async (query: Query, p: number) => {
@@ -99,18 +86,7 @@ export function Explore({ seen, views, active, request }: {
   // i punteggi si cercano per TUTTI i titoli caricati, non solo per quelli che passano il filtro
   useEffect(() => requestRatings(items), [items])
 
-  // richieste dall'esterno (frase libera dalla schermata "Ho voglia di…")
-  useEffect(() => {
-    if (request && request.id !== lastRequest.current) {
-      lastRequest.current = request.id
-      setQ(request.query)
-      setActiveView(null)
-      if (request.info) setNl({ busy: false, err: '', info: request.info, notes: [] })
-    }
-  }, [request])
-
   // "solo i miei abbonamenti" si traduce nelle piattaforme salvate; punteggi e visti si applicano lato client
-  // un voto minimo alto su IMDb/Rotten Tomatoes si traduce in una soglia più prudente su TMDB, per non scorrere titoli scarsi
   const hint = Math.max(q.minTmdb, q.minImdb ? Math.max(0, q.minImdb - 1.2) : 0, q.minRt >= 80 ? 6.3 : 0, q.minMeta >= 70 ? 6.3 : 0)
   const effective: Query = {
     ...q,
@@ -128,7 +104,7 @@ export function Explore({ seen, views, active, request }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
-  const seenSet = new Set(seen.map((t) => t.type + t.id))
+  const seenSet = new Set(lists.seen.map((t) => t.type + t.id))
   const ratingFilter = !!(q.minImdb || q.minRt || q.minMeta)
   // senza chiave OMDb non ci sono voti da confrontare: meglio non nascondere tutto
   const ratingActive = ratingFilter && R.enabled
@@ -136,9 +112,9 @@ export function Explore({ seen, views, active, request }: {
     if (!ratingActive) return true
     if (!r) return false // punteggi non ancora caricati
     const reqs: [number, number | undefined][] = [[q.minImdb, r.imdb], [q.minRt, r.rt], [q.minMeta, r.meta]]
-    const active = reqs.filter(([min]) => min > 0)
-    const known = active.filter(([, v]) => v !== undefined)
-    if (q.strictRatings && known.length < active.length) return false
+    const act = reqs.filter(([min]) => min > 0)
+    const known = act.filter(([, v]) => v !== undefined)
+    if (q.strictRatings && known.length < act.length) return false
     if (!known.length) return false
     return known.every(([min, v]) => (v as number) >= min)
   }
@@ -146,43 +122,30 @@ export function Explore({ seen, views, active, request }: {
     if (q.hideSeen && seenSet.has(t.type + t.id)) return false
     return passesRatings(R.get(t))
   })
+  useReportCount(visible.length, loading, active)
 
   // Con filtri stretti passano pochi titoli: si caricano altre pagine finché ce ne sono abbastanza
   useEffect(() => {
     const ratingsSettled = !ratingActive || (R.pending === 0 && !R.limited)
-    if (!loading && more && ratingsSettled && visible.length < 12 && page < 10 && !q.actor) {
+    if (active && !loading && more && ratingsSettled && visible.length < 12 && page < 10 && !q.actor) {
       load(JSON.parse(serverKey), page + 1)
     }
   })
-
-  const set = (p: Partial<Query>) => {
-    setActiveView(null)
-    setQ((c) => ({ ...c, ...p }))
-  }
-  const chips = activeChips(q, def)
-  const isFiltered = JSON.stringify({ ...q, providers: [...q.providers].sort() }) !== JSON.stringify({ ...def, providers: [...def.providers].sort() })
-  const resetAll = () => {
-    setQ(def)
-    setActiveView(null)
-    setPhrase('')
-    setNl({ busy: false, err: '', info: '', notes: [] })
-  }
 
   async function runPhrase() {
     const text = phrase.trim()
     if (!text) return
     if (!getAiKey()) {
-      setNl({ busy: false, err: 'Per cercare con una frase serve la chiave Anthropic: la inserisci in Impostazioni.', info: '', notes: [] })
+      setNl({ busy: false, err: 'Per cercare con una frase serve la chiave Anthropic: la inserisci in Impostazioni.' })
       return
     }
-    setNl({ busy: true, err: '', info: '', notes: [] })
+    setNl({ busy: true, err: '' })
     try {
       const applied = await nlSearch(text, personal.prefs.aiModel, mine)
-      setQ(applied.query)
-      setActiveView(null)
-      setNl({ busy: false, err: '', info: applied.summary, notes: applied.notes })
+      setQuery(applied.query, [applied.summary, ...applied.notes].join(' '))
+      setNl({ busy: false, err: '' })
     } catch (e) {
-      setNl({ busy: false, err: aiErrorText(e), info: '', notes: [] })
+      setNl({ busy: false, err: aiErrorText(e) })
     }
   }
 
@@ -192,9 +155,6 @@ export function Explore({ seen, views, active, request }: {
         <h1 className="page-title">Esplora</h1>
         <div className="row">
           <button className="iconbtn" onClick={() => setManage(true)} aria-label="Gestisci le ricerche salvate" data-tip="Gestisci le ricerche salvate"><Icon name="edit" size={18} /></button>
-          <button className={'btn' + (chips.length ? ' on' : '')} onClick={() => setFilters(true)} data-tip="Apri tutti i filtri">
-            <Icon name="filter" size={18} /> Filtri{chips.length ? ` · ${chips.length}` : ''}
-          </button>
         </div>
       </div>
 
@@ -206,12 +166,12 @@ export function Explore({ seen, views, active, request }: {
         <button className="btn gold sm" type="submit" disabled={nl.busy || !phrase.trim()}>{nl.busy ? 'Leggo…' : 'Cerca'}</button>
       </form>
       {nl.err && <p className="err">{nl.err}</p>}
-      {nl.info && <p className="muted"><b>Ho capito:</b> {nl.info}{nl.notes.length > 0 && <> · {nl.notes.join(' ')}</>}</p>}
+      {note && <p className="muted"><b>Ho capito:</b> {note}</p>}
 
       <div className="pills" role="tablist" aria-label="Le tue ricerche salvate">
-        <button className={'pill' + (activeView === null && !isFiltered ? ' on' : '')} onClick={() => { setQ(def); setActiveView(null); setNl({ busy: false, err: '', info: '', notes: [] }) }}>{def.providers.length ? 'Per me' : 'Tutto'}</button>
+        <button className={'pill' + (!viewId && !isFiltered ? ' on' : '')} onClick={() => { reset(); setPhrase('') }}>{base.providers.length ? 'Per me' : 'Tutto'}</button>
         {views.views.map((v) => (
-          <button key={v.id} role="tab" aria-selected={activeView === v.id} className={'pill' + (activeView === v.id ? ' on' : '')} onClick={() => { setQ(v.query); setActiveView(v.id) }}>
+          <button key={v.id} role="tab" aria-selected={viewId === v.id} className={'pill' + (viewId === v.id ? ' on' : '')} onClick={() => setQuery(v.query, '', v.id)}>
             {v.name}
           </button>
         ))}
@@ -222,18 +182,6 @@ export function Explore({ seen, views, active, request }: {
           <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
         ))}
       </div>
-
-      {isFiltered && (
-        <div className="row activechips" aria-label="Filtri attivi">
-          {chips.map((c) => (
-            <button key={c.key} className="achip" onClick={() => set(c.clear)} aria-label={`Togli il filtro ${c.label}`} data-tip="Togli questo filtro">
-              {c.label} <Icon name="x" size={12} />
-            </button>
-          ))}
-          {chips.length > 0 && <button className="link" onClick={() => setManage(true)}>Salva questa ricerca</button>}
-          <button className="btn sm" onClick={resetAll} data-tip="Torna ai filtri di partenza"><Icon name="x" size={14} /> Azzera i filtri</button>
-        </div>
-      )}
       <div style={{ height: 14 }} />
 
       {err && <p className="err">{err}</p>}
@@ -250,7 +198,7 @@ export function Explore({ seen, views, active, request }: {
             <Empty
               title="Nessun titolo"
               text={ratingActive && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'}
-              action={isFiltered ? <button className="btn gold" onClick={resetAll}>Azzera i filtri</button> : undefined}
+              action={isFiltered ? <button className="btn gold" onClick={reset}>Azzera i filtri</button> : undefined}
             />
           }
         />
@@ -261,20 +209,6 @@ export function Explore({ seen, views, active, request }: {
         </div>
       )}
 
-      {filters && (
-        <FilterStudio
-          q={q}
-          base={def}
-          set={set}
-          reset={() => { setActiveView(null); setQ(def) }}
-          count={visible.length}
-          preview={visible}
-          loading={loading}
-          savedProviders={mine}
-          onSaveProviders={(ids) => personal.setPrefs({ providers: ids })}
-          onClose={() => setFilters(false)}
-        />
-      )}
       {manage && <ManageViews api={views} q={q} onClose={() => setManage(false)} />}
     </>
   )

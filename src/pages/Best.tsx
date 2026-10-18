@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { MediaType, Title } from '../tmdb'
 import { PosterCard, Chip, Empty, SkeletonGrid, num } from '../ui/components'
+import { useFilters, useReportCount } from '../filters'
+import { matchesQuery, useFilterEnv } from '../filtering'
 
 interface BestItem {
   type: MediaType
@@ -35,6 +37,8 @@ export function Best({ seen, sources }: { seen: Title[]; sources: { id: string; 
   const [onlyAwards, setOnlyAwards] = useState(false)
   const [hideSeen, setHideSeen] = useState(false)
   const [shown, setShown] = useState(PAGE)
+  const { q } = useFilters()
+  const env = useFilterEnv(q)
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}best.json`)
@@ -51,8 +55,10 @@ export function Best({ seen, sources }: { seen: Title[]; sources: { id: string; 
     if (filter === 'it' && i.lang !== 'it') return false
     if (onlyAwards && i.awards.length === 0) return false
     if (hideSeen && seenSet.has(i.type + i.id)) return false
-    return true
+    // i filtri della barra in alto (tipo, genere, anno, voti, premi…)
+    return matchesQuery({ type: i.type, id: i.id, year: i.year, genreIds: i.genreIds, rating: i.imdb ?? 0, lang: i.lang, imdb: i.imdb, rt: i.rt, meta: i.meta }, q, env)
   })
+  useReportCount(data ? list.length : null, data === undefined, true)
   const reset = () => setShown(PAGE)
 
   return (

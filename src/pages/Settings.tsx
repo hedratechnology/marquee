@@ -17,6 +17,7 @@ const PLATFORM_LABEL: Record<Platform, string> = { instagram: 'Instagram', tikto
 const SECTIONS = [
   { id: 'connections', icon: 'link', label: 'Collegamenti' },
   { id: 'platforms', icon: 'film', label: 'Abbonamenti' },
+  { id: 'prefs', icon: 'globe', label: 'Lingua e disponibilità' },
   { id: 'ai', icon: 'spark', label: 'Intelligenza artificiale' },
   { id: 'sources', icon: 'list', label: 'Fonti e profili' },
   { id: 'backup', icon: 'down', label: 'Backup' },
@@ -196,6 +197,18 @@ export function Settings({ lists, views, replaceLists, src }: {
             </div>
             <div className="row" style={{ marginTop: 14 }}>
               <Chip on={personal.prefs.useMine} onClick={() => personal.setPrefs({ useMine: !personal.prefs.useMine })}>Usa i miei abbonamenti nei consigli e nei filtri</Chip>
+            </div>
+          </Section>
+
+          <Section id="prefs" icon="globe" title="Lingua e disponibilità" desc="Il punto di partenza dei filtri: puoi sempre cambiarlo per una singola ricerca.">
+            <div className="row">
+              <Chip on={personal.prefs.onlyItaly} onClick={() => personal.setPrefs({ onlyItaly: !personal.prefs.onlyItaly })}>Solo titoli guardabili in italiano</Chip>
+            </div>
+            <p className="muted" style={{ margin: '8px 0 14px' }}>Disponibili in Italia (abbonamento, noleggio o acquisto): di solito doppiati o sottotitolati.</p>
+            <label className="fieldlabel">Lingua originale preferita</label>
+            <div className="row">
+              <Chip on={!personal.prefs.lang} onClick={() => personal.setPrefs({ lang: '' })}>Qualsiasi</Chip>
+              {tmdb.LANGS.map((l) => <Chip key={l.id} on={personal.prefs.lang === l.id} onClick={() => personal.setPrefs({ lang: personal.prefs.lang === l.id ? '' : l.id })}>{l.label}</Chip>)}
             </div>
           </Section>
 

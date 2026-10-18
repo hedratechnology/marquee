@@ -5,6 +5,7 @@ import { useLists as useListsStore } from './store'
 import { useViews } from './views'
 import { useSources } from './sources'
 import { PersonalProvider, usePersonal } from './personal'
+import { FilterProvider, useFilters } from './filters'
 import { computeTaste, tasteSummary } from './taste'
 import { decodePayload } from './together'
 import type { TogetherPayload } from './together'
@@ -14,6 +15,8 @@ import { Icon } from './ui/icons'
 import { Home } from './pages/Home'
 import type { Goto } from './pages/Home'
 import { Explore } from './pages/Explore'
+import { FilterBar } from './pages/FilterBar'
+import { FilterStrip } from './pages/FilterStrip'
 import { Best } from './pages/Best'
 import { Library } from './pages/Library'
 import { SearchPage } from './pages/SearchPage'
@@ -49,11 +52,11 @@ function Shell() {
   const [back, setBack] = useState<Tab>('home')
   const [incoming, setIncoming] = useState<TogetherPayload | null>(incomingAtStart)
   const [sel, setSel] = useState<Title | null>(null)
-  const [request, setRequest] = useState<{ id: number; query: Query; info?: string } | null>(null)
   const { lists, has, toggle, replace } = useListsStore()
   const views = useViews()
   const src = useSources()
   const personal = usePersonal()
+  const F = useFilters()
   const genres = useGenres()
 
   const taste = useMemo(() => computeTaste(lists, personal.reactions), [lists, personal.reactions])
@@ -85,12 +88,20 @@ function Shell() {
   }
   const listCount = lists.watchlist.length + lists.favorites.length + lists.seen.length
   const applyQuery = (query: Query, info?: string) => {
-    setRequest({ id: Date.now(), query, info })
+    F.setQuery(query, info ?? '')
     go('explore')
+  }
+  // i filtri valgono in Home, Esplora, Il meglio e Liste; dalle altre pagine l'icona porta in Esplora
+  const filterable = tab === 'home' || tab === 'explore' || tab === 'best' || tab === 'library'
+  const toggleFilters = () => {
+    if (!filterable) {
+      go('explore')
+      F.setOpen(true)
+    } else F.toggleOpen()
   }
 
   return (
-    <ListsCtx.Provider value={{ has, toggle }}>
+    <ListsCtx.Provider value={{ has, toggle, lists }}>
       <TasteCtx.Provider value={{ taste, summary }}>
         <OpenCtx.Provider value={setSel}>
           <div className="shell">
@@ -104,18 +115,25 @@ function Shell() {
                 ))}
               </nav>
               <span className="spacer" />
+              <button className={'hbtn' + (F.open ? ' on' : '')} onClick={toggleFilters} aria-label="Filtri" aria-expanded={F.open} data-tip={F.open ? 'Chiudi i filtri' : 'Filtra i titoli: tipo, voti, premi, piattaforme…'}>
+                <Icon name="filter" size={19} /><span>Filtri</span>
+                {F.chips.length > 0 && <i className="hbadge">{F.chips.length}</i>}
+              </button>
               <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip={tab === 'search' ? 'Torna alla schermata precedente' : 'Cerca un titolo o descrivilo con l\'IA'}><Icon name="search" size={19} /></button>
               <button className={'hbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip={tab === 'settings' ? 'Torna alla schermata precedente' : 'Impostazioni: abbonamenti, chiavi, IA, backup'}>
                 <Icon name="gear" size={19} /><span>Impostazioni</span>
               </button>
             </header>
 
+            <FilterBar />
+            {filterable && !F.open && <FilterStrip showNotice={tab !== 'explore'} />}
+
             <main>
               <div hidden={tab !== 'home'}>
-                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} goto={(t: Goto) => go(t)} />
+                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => go(t)} />
               </div>
               <div hidden={tab !== 'explore'}>
-                <Explore seen={lists.seen} views={views} active={tab === 'explore'} request={request} />
+                <Explore views={views} active={tab === 'explore'} />
               </div>
               {tab === 'pick' && (
                 <>
@@ -159,7 +177,9 @@ function Shell() {
 export default function App() {
   return (
     <PersonalProvider>
-      <Shell />
+      <FilterProvider>
+        <Shell />
+      </FilterProvider>
     </PersonalProvider>
   )
 }

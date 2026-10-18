@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Title } from '../tmdb'
 import type { ListName, Lists } from '../store'
 import { Chip, Empty, TitleGrid } from '../ui/components'
 import { TAGS, usePersonal } from '../personal'
 import type { Tag } from '../personal'
 import { useTaste } from '../ui/ctx'
+import { useFilters, useReportCount } from '../filters'
+import { matchesQuery, useFilterEnv } from '../filtering'
+import { requestRatings } from '../omdb'
 
 const LABEL: Record<ListName, string> = {
   watchlist: 'Da vedere', favorites: 'Preferiti', seen: 'Visti', started: 'In corso', dropped: 'Abbandonati', hidden: 'Nascosti',
@@ -27,7 +30,16 @@ export function Library({ lists }: { lists: Lists }) {
   const [tag, setTag] = useState<Tag | null>(null)
   const p = usePersonal()
   const { summary, taste } = useTaste()
-  const items: Title[] = tab === 'watchlist' && tag ? lists.watchlist.filter((t) => p.tagsOf(t).includes(tag)) : lists[tab]
+  const { q } = useFilters()
+  const env = useFilterEnv(q)
+  const byTag: Title[] = tab === 'watchlist' && tag ? lists.watchlist.filter((t) => p.tagsOf(t).includes(tag)) : lists[tab]
+  const ratingFilter = !!(q.minImdb || q.minRt || q.minMeta)
+  // con filtri sui voti servono i punteggi di tutti i titoli della lista
+  useEffect(() => {
+    if (ratingFilter) requestRatings(byTag)
+  }, [ratingFilter, byTag])
+  const items: Title[] = byTag.filter((t) => matchesQuery({ type: t.type, id: t.id, year: t.year, genreIds: t.genreIds ?? [], rating: t.rating }, q, env))
+  useReportCount(items.length, false, true)
 
   return (
     <>

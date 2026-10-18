@@ -562,3 +562,61 @@ button[data-tip], .score span[data-tip] { position: relative; }
   .tiles.compact .tile b { font-size: 0.86rem; line-height: 1.2; }
   .blk { margin-bottom: 20px; }
 }
+
+/* ---------- barra dei filtri sotto l'intestazione ---------- */
+.hbadge { font-style: normal; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--text); color: #0a0a0b; font-size: 0.68rem; font-weight: 700; display: grid; place-items: center; margin-left: -2px; }
+.hbtn { position: relative; }
+.hbtn .hbadge { position: absolute; top: -4px; right: -4px; margin: 0; }
+@media (min-width: 880px) { .hbtn .hbadge { position: static; margin-left: 2px; } }
+
+.fbar {
+  position: sticky; top: 64px; z-index: 18; margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter);
+  background: rgba(14, 14, 16, 0.96); backdrop-filter: blur(16px); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line-2);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45); animation: drop 0.22s ease;
+}
+@keyframes drop { from { opacity: 0; transform: translateY(-10px); } }
+.fbar-top { display: flex; align-items: center; gap: 12px; padding: 10px 0 6px; }
+.fbar-tabs { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+.fbar-tabs::-webkit-scrollbar { display: none; }
+.ftab { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 7px; border-radius: 999px; border: 1px solid transparent; background: none; color: var(--muted); }
+.ftab b { font-weight: 600; font-size: 0.86rem; color: var(--text); white-space: nowrap; }
+.ftab .ci { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); }
+.ftab .badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c); color: #0a0a0b; font-size: 0.68rem; font-weight: 700; display: grid; place-items: center; }
+.ftab:hover { background: rgba(255, 255, 255, 0.05); }
+.ftab.on { background: var(--surface-2); border-color: color-mix(in srgb, var(--c) 55%, transparent); }
+.fbar-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.fcount { font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+.iconbtn.sm { width: 34px; height: 34px; }
+.fbar-presets { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none; }
+.fbar-presets::-webkit-scrollbar { display: none; }
+.fbar-presets .pv-label { margin: 0 4px 0 0; flex: none; }
+.fbar-body { max-height: min(300px, 42vh); overflow-y: auto; padding: 14px 0 6px; border-top: 1px solid var(--line); }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 6px 32px; align-items: start; }
+.fbar .blk { margin-bottom: 14px; }
+.fbar .blk h3 { margin-bottom: 8px; }
+.fbar .tiles, .fbar .tiles.small { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px; }
+.fbar .tile { flex-direction: row; align-items: center; gap: 9px; padding: 7px 10px; min-height: 42px; }
+.fbar .tile .ti { margin: 0; width: 26px; height: 26px; flex: none; }
+.fbar .tile > span:not(.ti) { display: none; }
+.fbar .tile b { font-size: 0.82rem; line-height: 1.2; }
+.fbar .chip { height: 30px; padding: 0 11px; font-size: 0.8rem; }
+.fbar .rng { margin: 5px 0; grid-template-columns: 112px 1fr 56px; }
+.fbar .sw { padding: 9px 12px; }
+.fbar .seg2 button { height: 30px; padding: 0 11px; font-size: 0.8rem; }
+.fbar select, .fbar input.field { height: 36px; font-size: 0.85rem; }
+@media (max-width: 879px) {
+  .fbar { top: 64px; }
+  .fbar-body { max-height: 46vh; }
+  .ftab b { font-size: 0.8rem; }
+  .fcount { display: none; }
+  .bgrid { grid-template-columns: 1fr; }
+}
+.fstrip { margin: 4px 0 6px; padding: 10px 0 2px; }
+.fstrip .row { gap: 8px; margin: 0; }
+
+/* barra più compatta: più spazio ai risultati sotto */
+.fbar-top { padding: 8px 0 4px; }
+.fbar-presets { padding: 2px 0 8px; }
+.fbar-body { max-height: min(232px, 32vh); padding: 12px 0 2px; }
+.fbar .blk { margin-bottom: 10px; }
+.fbar-body { max-height: min(290px, 38vh); }

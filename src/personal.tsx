@@ -32,12 +32,16 @@ export interface ReactionEntry {
 
 export interface Prefs {
   providers: number[]
-  /** usa i miei abbonamenti in "Scegli per me" e nei consigli */
+  /** usa i miei abbonamenti in "Scegli per me", nei consigli e nei filtri */
   useMine: boolean
   aiModel: string
+  /** di partenza mostra solo titoli guardabili in Italia (di solito doppiati o sottotitolati) */
+  onlyItaly: boolean
+  /** lingua originale preferita, vuota = qualsiasi */
+  lang: string
 }
 
-export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5' }
+export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5', onlyItaly: true, lang: '' }
 
 export interface PersonalSnapshot {
   tags: Record<string, Tag[]>
