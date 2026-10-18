@@ -9,7 +9,7 @@ import { useFilters, useReportCount } from '../filters'
 import { matchesQuery, useFilterEnv } from '../filtering'
 import { bestToTitle, useBest } from '../ui/data'
 
-export type Goto = 'pick' | 'like' | 'library' | 'together' | 'best' | 'explore' | 'settings'
+export type Goto = 'pick' | 'library' | 'together' | 'best' | 'explore' | 'settings'
 
 interface ExpiringItem {
   type: tmdb.MediaType
@@ -179,7 +179,6 @@ export function Home({ favorites, seen, goto, listCount, active }: { favorites: 
 
       <div className="entrances">
         <Entrance accent icon="spark" title="Scegli per me" text="Umore, tempo e compagnia: tre proposte, con i motivi." onClick={() => goto('pick')} />
-        <Entrance icon="search" title="Ho voglia di qualcosa come…" text="Parti da un titolo oppure descrivi ciò che cerchi." onClick={() => goto('like')} />
         <Entrance icon="bookmark" title="La mia lista" text={listCount ? `${listCount} titoli salvati, organizzati.` : 'Da vedere, preferiti, visti: tutto in ordine.'} onClick={() => goto('library')} />
       </div>
       <button className="banner" onClick={() => goto('together')}>

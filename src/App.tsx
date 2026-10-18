@@ -23,10 +23,9 @@ import { SearchPage } from './pages/SearchPage'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
 import { PickPage } from './pages/Pick'
-import { Like } from './pages/Like'
 import { TogetherPage } from './pages/Together'
 
-type Tab = 'home' | 'pick' | 'like' | 'together' | 'explore' | 'best' | 'library' | 'search' | 'settings'
+type Tab = 'home' | 'pick' | 'together' | 'explore' | 'best' | 'library' | 'search' | 'settings'
 
 const NAV: { id: Tab; label: string; icon: string }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -37,7 +36,7 @@ const NAV: { id: Tab; label: string; icon: string }[] = [
 
 /** Sezioni raggiunte dalla home: nel menu resta evidenziata la Home. */
 const NAV_OF: Record<Tab, Tab | null> = {
-  home: 'home', pick: 'home', like: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', search: null, settings: null,
+  home: 'home', pick: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', search: null, settings: null,
 }
 
 function readIncoming(): TogetherPayload | null {
@@ -119,7 +118,7 @@ function Shell() {
                 <Icon name="filter" size={19} /><span>Filtri</span>
                 {F.chips.length > 0 && <i className="hbadge">{F.chips.length}</i>}
               </button>
-              <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip={tab === 'search' ? 'Torna alla schermata precedente' : 'Cerca un titolo o descrivilo con l\'IA'}><Icon name="search" size={19} /></button>
+              {tab !== 'explore' && <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip={tab === 'search' ? 'Torna alla schermata precedente' : 'Cerca un titolo o descrivilo con l\'IA'}><Icon name="search" size={19} /></button>}
               <button className={'hbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip={tab === 'settings' ? 'Torna alla schermata precedente' : 'Impostazioni: abbonamenti, chiavi, IA, backup'}>
                 <Icon name="gear" size={19} /><span>Impostazioni</span>
               </button>
@@ -139,12 +138,6 @@ function Shell() {
                 <>
                   <button className="link" style={{ marginTop: 14 }} onClick={() => go('home')}>← Home</button>
                   <PickPage lists={lists} />
-                </>
-              )}
-              {tab === 'like' && (
-                <>
-                  <button className="link" style={{ marginTop: 14 }} onClick={() => go('home')}>← Home</button>
-                  <Like lists={lists} onApplyQuery={applyQuery} />
                 </>
               )}
               {tab === 'together' && <TogetherPage key={incoming ? 'in' : 'out'} lists={lists} incoming={incoming} onExit={() => { setIncoming(null); go('home') }} />}

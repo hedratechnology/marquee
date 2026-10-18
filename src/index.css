@@ -620,3 +620,10 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .fbar-body { max-height: min(232px, 32vh); padding: 12px 0 2px; }
 .fbar .blk { margin-bottom: 10px; }
 .fbar-body { max-height: min(290px, 38vh); }
+
+/* campo di ricerca di Esplora: nei risultati / con l'IA */
+.nlbox { flex-wrap: wrap; border-radius: 22px; padding: 6px 6px 6px 8px; gap: 8px; }
+.nlbox form { display: flex; align-items: center; gap: 8px; flex: 1 1 240px; min-width: 0; }
+.mode2 { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); flex: none; }
+.mode2 button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; border: 0; background: none; color: var(--muted); font-weight: 600; font-size: 0.82rem; white-space: nowrap; }
+.mode2 button.on { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }

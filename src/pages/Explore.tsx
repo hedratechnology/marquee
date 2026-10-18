@@ -16,6 +16,8 @@ import { errText, summary } from '../ui/helpers'
 type ViewsApi = ReturnType<typeof useViews>
 
 const toggleIn = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
+/** minuscolo e senza accenti, per confrontare i titoli */
+const plain = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: () => void }) {
   const [name, setName] = useState('')
@@ -63,6 +65,10 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
   const [manage, setManage] = useState(false)
   const [phrase, setPhrase] = useState('')
   const [nl, setNl] = useState<{ busy: boolean; err: string }>({ busy: false, err: '' })
+  // il campo di ricerca: o filtra i risultati che vedi, o descrive in una frase cosa cerchi (IA)
+  const [mode, setMode] = useState<'results' | 'ai'>(() => (localStorage.getItem('explore_mode') === 'ai' ? 'ai' : 'results'))
+  const [textQ, setTextQ] = useState('')
+  const [catalog, setCatalog] = useState<{ q: string; items: Title[]; busy: boolean; err: string } | null>(null)
   const reqId = useRef(0)
   const R = useRatings()
 
@@ -122,7 +128,9 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
     if (q.hideSeen && seenSet.has(t.type + t.id)) return false
     return passesRatings(R.get(t))
   })
-  useReportCount(visible.length, loading, active)
+  const needle = plain(textQ)
+  const shown = mode === 'results' && needle ? visible.filter((t) => plain(t.title).includes(needle)) : visible
+  useReportCount(catalog ? catalog.items.length : shown.length, loading || !!catalog?.busy, active)
 
   // Con filtri stretti passano pochi titoli: si caricano altre pagine finché ce ne sono abbastanza
   useEffect(() => {
@@ -149,6 +157,23 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
     }
   }
 
+  async function searchCatalog() {
+    const text = textQ.trim()
+    if (text.length < 2) return
+    setCatalog({ q: text, items: [], busy: true, err: '' })
+    try {
+      const r = await tmdb.search(text)
+      setCatalog({ q: text, items: r.filter((t) => t.poster), busy: false, err: '' })
+    } catch (e) {
+      setCatalog({ q: text, items: [], busy: false, err: errText(e) })
+    }
+  }
+  const switchMode = (m: 'results' | 'ai') => {
+    setMode(m)
+    localStorage.setItem('explore_mode', m)
+    setCatalog(null)
+  }
+
   return (
     <>
       <div className="row between">
@@ -158,13 +183,24 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
         </div>
       </div>
 
-      <form className="nlbox" onSubmit={(e) => { e.preventDefault(); runPhrase() }}>
-        <span className="aibadge" data-tip="Descrivi in una frase quello che cerchi: l'IA imposta i filtri per te">
-          <Icon name="spark" size={14} /> Cerca con l'IA
-        </span>
-        <input value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="es. una serie misteriosa, poco violenta, episodi brevi" aria-label="Descrivi cosa vuoi vedere" />
-        <button className="btn gold sm" type="submit" disabled={nl.busy || !phrase.trim()}>{nl.busy ? 'Leggo…' : 'Cerca'}</button>
-      </form>
+      <div className="nlbox">
+        <div className="mode2" role="tablist" aria-label="Come cercare">
+          <button role="tab" aria-selected={mode === 'results'} className={mode === 'results' ? 'on' : ''} onClick={() => switchMode('results')} data-tip="Filtra i titoli che vedi in elenco, o cerca per titolo in tutto il catalogo">
+            <Icon name="search" size={14} /> Nei risultati
+          </button>
+          <button role="tab" aria-selected={mode === 'ai'} className={mode === 'ai' ? 'on' : ''} onClick={() => switchMode('ai')} data-tip="Descrivi in una frase quello che cerchi: l'IA imposta i filtri per te">
+            <Icon name="spark" size={14} /> Con l'IA
+          </button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (mode === 'ai') runPhrase(); else searchCatalog() }}>
+          {mode === 'ai' ? (
+            <input key="ai" value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="es. una serie misteriosa, poco violenta, episodi brevi" aria-label="Descrivi cosa vuoi vedere" />
+          ) : (
+            <input key="results" value={textQ} onChange={(e) => { setTextQ(e.target.value); setCatalog(null) }} placeholder="Cerca un titolo tra i risultati" aria-label="Cerca tra i risultati" />
+          )}
+          {mode === 'ai' && <button className="btn gold sm" type="submit" disabled={nl.busy || !phrase.trim()}>{nl.busy ? 'Leggo…' : 'Cerca'}</button>}
+        </form>
+      </div>
       {nl.err && <p className="err">{nl.err}</p>}
       {note && <p className="muted"><b>Ho capito:</b> {note}</p>}
 
@@ -189,21 +225,37 @@ export function Explore({ views, active }: { views: ViewsApi; active: boolean })
       {ratingFilter && R.limited && <p className="err">Limite giornaliero OMDb raggiunto: i filtri sui punteggi usano solo i titoli già controllati.</p>}
       {ratingActive && R.pending > 0 && <p className="muted">Controllo i punteggi… ({R.pending})</p>}
 
-      {loading && items.length === 0 ? (
+      {mode === 'results' && textQ.trim().length >= 2 && !catalog && (
+        <p className="muted" style={{ margin: '0 0 14px' }}>
+          {shown.length} {shown.length === 1 ? 'titolo' : 'titoli'} tra i risultati ·{' '}
+          <button className="link" onClick={searchCatalog}>Cerca «{textQ.trim()}» in tutto il catalogo</button>
+        </p>
+      )}
+
+      {catalog ? (
+        <>
+          <div className="row between" style={{ margin: '0 0 14px' }}>
+            <p className="muted" style={{ margin: 0 }}>Risultati per «{catalog.q}» in tutto il catalogo</p>
+            <button className="btn sm" onClick={() => setCatalog(null)}>Torna ai risultati</button>
+          </div>
+          {catalog.err && <p className="err">{catalog.err}</p>}
+          {catalog.busy ? <SkeletonGrid n={6} /> : <TitleGrid items={catalog.items} empty={<Empty icon="search" title="Nessun risultato" text="Prova con un altro titolo." />} />}
+        </>
+      ) : loading && items.length === 0 ? (
         <SkeletonGrid />
       ) : (
         <TitleGrid
-          items={visible}
+          items={shown}
           empty={
             <Empty
               title="Nessun titolo"
-              text={ratingActive && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'}
+              text={textQ.trim() ? 'Nessun titolo con questo nome tra i risultati: prova a cercarlo in tutto il catalogo.' : ratingActive && R.pending === 0 ? 'Nessun titolo supera questi punteggi: abbassa le soglie.' : 'Prova a togliere qualche filtro.'}
               action={isFiltered ? <button className="btn gold" onClick={reset}>Azzera i filtri</button> : undefined}
             />
           }
         />
       )}
-      {more && items.length > 0 && !q.actor && (
+      {!catalog && more && items.length > 0 && !q.actor && !textQ.trim() && (
         <div className="row center" style={{ margin: '28px 0' }}>
           <button className="btn" disabled={loading} onClick={() => load(JSON.parse(serverKey), page + 1)}>{loading ? 'Carico…' : 'Carica altri'}</button>
         </div>
