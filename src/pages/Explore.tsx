@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as tmdb from '../tmdb'
-import type { Kind, Mood, Query, Title } from '../tmdb'
-import { getOmdbKey, requestRatings, useRatings } from '../omdb'
+import type { Kind, Query, Title } from '../tmdb'
+import { requestRatings, useRatings } from '../omdb'
 import type { Ratings } from '../omdb'
 import type { useViews } from '../views'
 import { MAX_VIEWS } from '../views'
 import { aiErrorText, getAiKey, nlSearch } from '../ai'
 import { usePersonal } from '../personal'
-import { Chip, Empty, Range, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
+import { Chip, Empty, Sheet, SkeletonGrid, TitleGrid } from '../ui/components'
 import { Icon } from '../ui/icons'
 import { activeChips, errText, summary } from '../ui/helpers'
-import { AWARD_OPTIONS } from '../awards'
+import { FilterStudio } from './FilterStudio'
 
 type ViewsApi = ReturnType<typeof useViews>
 
@@ -48,206 +48,23 @@ function ManageViews({ api, q, onClose }: { api: ViewsApi; q: Query; onClose: ()
   )
 }
 
-function FilterSheet({ q, set, reset, count, onClose, hasMine }: {
-  q: Query; set: (p: Partial<Query>) => void; reset: () => void; count: number; onClose: () => void; hasMine: boolean
-}) {
-  const [genres, setGenres] = useState<tmdb.GenreEntry[]>([])
-  const [actorQ, setActorQ] = useState('')
-  const [dirQ, setDirQ] = useState('')
-  const [sugg, setSugg] = useState<{ id: number; name: string }[]>([])
-  const [suggFor, setSuggFor] = useState<'actor' | 'director'>('actor')
-  useEffect(() => {
-    tmdb.genreList().then(setGenres).catch(() => setGenres([]))
-  }, [])
-  const types = tmdb.kindTypes(q.kinds)
-  const options = genres.filter((g) => types.some((t) => g[t] !== undefined))
-  const hasSeries = q.kinds.some((k) => k === 'series' || k === 'miniseries')
-
-  async function find(v: string, who: 'actor' | 'director') {
-    if (who === 'actor') setActorQ(v)
-    else setDirQ(v)
-    setSuggFor(who)
-    if (v.length < 2) return setSugg([])
-    try {
-      setSugg(await tmdb.searchPerson(v))
-    } catch {
-      setSugg([])
-    }
-  }
-
-  return (
-    <Sheet
-      title="Filtri"
-      onClose={onClose}
-      className="filters"
-      foot={
-        <>
-          <button className="btn" onClick={reset}>Azzera i filtri</button>
-          <button className="btn gold" onClick={onClose}>Mostra {count} titoli</button>
-        </>
-      }
-    >
-      <div className="fgrid">
-        <div className="fcol">
-          <div className="group">
-            <span className="eyebrow">Tipo</span>
-            <div className="row">
-              {tmdb.KINDS.map((k) => (
-                <Chip key={k.id} on={q.kinds.includes(k.id)} onClick={() => (q.kinds.length > 1 || !q.kinds.includes(k.id) ? set({ kinds: toggleIn<Kind>(q.kinds, k.id), genres: [] }) : undefined)}>{k.label}</Chip>
-              ))}
-            </div>
-          </div>
-          <div className="group">
-            <span className="eyebrow">Umore (stima dai generi)</span>
-            <div className="row">
-              {tmdb.MOODS.map((m) => <Chip key={m.id} on={q.moods.includes(m.id)} onClick={() => set({ moods: toggleIn<Mood>(q.moods, m.id) })}>{m.label}</Chip>)}
-            </div>
-          </div>
-          <div className="group">
-            <span className="eyebrow">Generi</span>
-            <div className="row">
-              {options.map((g) => <Chip key={g.name} on={q.genres.includes(g.name)} onClick={() => set({ genres: toggleIn(q.genres, g.name) })}>{g.name}</Chip>)}
-            </div>
-            {q.genres.length > 1 && (
-              <div className="row" style={{ marginTop: 8 }}>
-                <Chip on={q.genreMode === 'all'} onClick={() => set({ genreMode: 'all' })}>Tutti insieme</Chip>
-                <Chip on={q.genreMode === 'any'} onClick={() => set({ genreMode: 'any' })}>Almeno uno</Chip>
-              </div>
-            )}
-          </div>
-          <div className="group">
-            <span className="eyebrow">Ordina e nascondi</span>
-            <div className="row">
-              <select className="field" value={q.sort} onChange={(e) => set({ sort: e.target.value as Query['sort'] })}>
-                <option value="popularity">Più popolari</option>
-                <option value="rating">Voto più alto</option>
-                <option value="recent">Più recenti</option>
-              </select>
-              <Chip on={q.hideSeen} onClick={() => set({ hideSeen: !q.hideSeen })}>Nascondi i già visti</Chip>
-            </div>
-          </div>
-        </div>
-
-        <div className="fcol">
-          <div className="group">
-            <span className="eyebrow">Dove e come guardarlo</span>
-            <div className="row">
-              <Chip on={q.onlyItaly} onClick={() => set({ onlyItaly: !q.onlyItaly })}>Guardabili in italiano</Chip>
-              {hasMine ? (
-                <Chip on={q.onlyMine} onClick={() => set({ onlyMine: !q.onlyMine })}>Solo i miei abbonamenti</Chip>
-              ) : null}
-            </div>
-            <p className="muted hint">Titoli disponibili in Italia (abbonamento, noleggio o acquisto): di solito doppiati o sottotitolati. Non si può filtrare per audio o sottotitoli.</p>
-            <div className="row" style={{ marginTop: 10 }}>
-              {tmdb.PROVIDERS.map((p) => <Chip key={p.id} on={q.providers.includes(p.id)} onClick={() => set({ providers: toggleIn(q.providers, p.id) })}>{p.name}</Chip>)}
-            </div>
-            <div className="row" style={{ marginTop: 10 }}>
-              <select className="field" value={q.monetization} onChange={(e) => set({ monetization: e.target.value as Query['monetization'] })} aria-label="Disponibilità">
-                <option value="any">Abbonamento, noleggio o acquisto</option>
-                <option value="flatrate">Solo incluso nell'abbonamento</option>
-                <option value="rent">Solo da noleggiare</option>
-                <option value="buy">Solo da comprare</option>
-              </select>
-            </div>
-            {!hasMine && <p className="muted hint">Indica i tuoi abbonamenti in Impostazioni per filtrare «solo i miei».</p>}
-            {q.actor && q.providers.length > 0 && <p className="muted hint">Con un attore selezionato le piattaforme non si applicano.</p>}
-          </div>
-          <div className="group">
-            <span className="eyebrow">Punteggi minimi</span>
-            {!getOmdbKey() && <p className="muted hint">Per IMDb, Rotten Tomatoes e Metacritic serve la chiave OMDb (Impostazioni).</p>}
-            <Range label="IMDb" value={q.minImdb} min={0} max={9.5} step={0.1} onChange={(v) => set({ minImdb: v })} />
-            <Range label="Rotten Tomatoes" value={q.minRt} min={0} max={100} step={5} suffix="%" onChange={(v) => set({ minRt: v })} />
-            <Range label="Metacritic" value={q.minMeta} min={0} max={100} step={5} onChange={(v) => set({ minMeta: v })} />
-            <Range label="TMDB" value={q.minTmdb} min={0} max={9} step={0.1} onChange={(v) => set({ minTmdb: v })} />
-            {(q.minImdb > 0 || q.minRt > 0 || q.minMeta > 0) && (
-              <div className="row" style={{ marginTop: 8 }}>
-                <Chip on={q.strictRatings} onClick={() => set({ strictRatings: !q.strictRatings })}>Servono tutti i voti</Chip>
-                <span className="muted hint" style={{ flex: 1, minWidth: 160 }}>Rotten Tomatoes e Metacritic mancano spesso per serie e titoli recenti: di solito contano solo i voti che esistono.</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="fcol">
-          <div className="group">
-            <span className="eyebrow">Premi vinti</span>
-            <div className="row">
-              {AWARD_OPTIONS.map((a) => <Chip key={a.id} on={q.awards.includes(a.id)} onClick={() => set({ awards: toggleIn(q.awards, a.id) })}>{a.label}</Chip>)}
-            </div>
-            <p className="muted hint">Dati da Wikidata, buoni ma non completi. Con un premio attivo piattaforme e durata non si applicano.</p>
-          </div>
-          <div className="group">
-            <span className="eyebrow">Durata e ritmo</span>
-            <div className="row">
-              <select className="field" value={q.maxRuntime ?? 0} onChange={(e) => set({ maxRuntime: +e.target.value || undefined })} aria-label="Durata dei film">
-                <option value={0}>Film: ogni durata</option>
-                <option value={90}>Film sotto 90 min</option>
-                <option value={100}>Film sotto 100 min</option>
-                <option value={120}>Film sotto 2 ore</option>
-                <option value={150}>Film sotto 2 ore e mezza</option>
-              </select>
-              <select className="field" value={q.maxEpisode ?? 0} onChange={(e) => set({ maxEpisode: +e.target.value || undefined })} aria-label="Durata degli episodi">
-                <option value={0}>Episodi: ogni durata</option>
-                <option value={30}>Episodi sotto 30 min</option>
-                <option value={45}>Episodi sotto 45 min</option>
-                <option value={60}>Episodi sotto 1 ora</option>
-              </select>
-            </div>
-            <div className="row" style={{ marginTop: 8 }}>
-              {hasSeries && <Chip on={q.status === 'ended'} onClick={() => set({ status: q.status === 'ended' ? undefined : 'ended' })}>Serie concluse</Chip>}
-              {hasSeries && <Chip on={q.status === 'ongoing'} onClick={() => set({ status: q.status === 'ongoing' ? undefined : 'ongoing' })}>Serie in corso</Chip>}
-              <Chip on={q.gentle} onClick={() => set({ gentle: !q.gentle })}>Poco violento</Chip>
-            </div>
-          </div>
-          <div className="group">
-            <span className="eyebrow">Origine e anno</span>
-            <div className="row">
-              <select className="field" value={q.country ?? ''} onChange={(e) => set({ country: e.target.value || undefined })} aria-label="Paese di produzione">
-                <option value="">Paese: tutti</option>
-                {tmdb.COUNTRIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
-              <select className="field" value={q.lang ?? ''} onChange={(e) => set({ lang: e.target.value || undefined })} aria-label="Lingua originale">
-                <option value="">Lingua originale: qualsiasi</option>
-                {tmdb.LANGS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-              </select>
-            </div>
-            <div className="row" style={{ marginTop: 8 }}>
-              <input className="field" type="number" inputMode="numeric" placeholder="Dal" value={q.yearFrom ?? ''} onChange={(e) => set({ yearFrom: e.target.value || undefined })} />
-              <input className="field" type="number" inputMode="numeric" placeholder="Al" value={q.yearTo ?? ''} onChange={(e) => set({ yearTo: e.target.value || undefined })} />
-            </div>
-          </div>
-          <div className="group">
-            <span className="eyebrow">Persone</span>
-            <div className="row">
-              {q.actor ? (
-                <button className="btn sm on" onClick={() => { set({ actor: undefined }); setActorQ('') }}>Con {q.actor.name} <Icon name="x" size={14} /></button>
-              ) : (
-                <input className="field" placeholder="Attore o attrice…" value={actorQ} onChange={(e) => find(e.target.value, 'actor')} />
-              )}
-              {q.director ? (
-                <button className="btn sm on" onClick={() => { set({ director: undefined }); setDirQ('') }}>Regia di {q.director.name} <Icon name="x" size={14} /></button>
-              ) : (
-                <input className="field" placeholder="Regista (solo film)…" value={dirQ} onChange={(e) => find(e.target.value, 'director')} />
-              )}
-            </div>
-            {sugg.length > 0 && (
-              <div className="row" style={{ marginTop: 8 }}>
-                {sugg.map((s) => <Chip key={s.id} onClick={() => { set(suggFor === 'actor' ? { actor: s } : { director: s }); setSugg([]) }}>{s.name}</Chip>)}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </Sheet>
-  )
-}
-
 export function Explore({ seen, views, active, request }: {
   seen: Title[]; views: ViewsApi; active: boolean; request: { id: number; query: Query; info?: string } | null
 }) {
   const personal = usePersonal()
   const mine = personal.prefs.providers
-  const [q, setQ] = useState<Query>(tmdb.emptyQuery)
+  // di partenza gli abbonamenti salvati in Impostazioni sono già selezionati
+  const def = useMemo<Query>(
+    () => ({ ...tmdb.emptyQuery, providers: personal.prefs.useMine ? personal.prefs.providers : [] }),
+    [personal.prefs.useMine, personal.prefs.providers],
+  )
+  const [q, setQ] = useState<Query>(def)
+  const lastDef = useRef(def)
+  useEffect(() => {
+    // se cambi gli abbonamenti in Impostazioni e non hai ancora toccato le piattaforme, si aggiornano anche qui
+    setQ((c) => (JSON.stringify(c.providers) === JSON.stringify(lastDef.current.providers) ? { ...c, providers: def.providers } : c))
+    lastDef.current = def
+  }, [def])
   const [activeView, setActiveView] = useState<string | null>(null)
   const [items, setItems] = useState<Title[]>([])
   const [page, setPage] = useState(1)
@@ -342,10 +159,10 @@ export function Explore({ seen, views, active, request }: {
     setActiveView(null)
     setQ((c) => ({ ...c, ...p }))
   }
-  const chips = activeChips(q)
-  const isFiltered = chips.length > 0 || activeView !== null || JSON.stringify(q.kinds) !== JSON.stringify(tmdb.emptyQuery.kinds)
+  const chips = activeChips(q, def)
+  const isFiltered = JSON.stringify({ ...q, providers: [...q.providers].sort() }) !== JSON.stringify({ ...def, providers: [...def.providers].sort() })
   const resetAll = () => {
-    setQ(tmdb.emptyQuery)
+    setQ(def)
     setActiveView(null)
     setPhrase('')
     setNl({ busy: false, err: '', info: '', notes: [] })
@@ -392,7 +209,7 @@ export function Explore({ seen, views, active, request }: {
       {nl.info && <p className="muted"><b>Ho capito:</b> {nl.info}{nl.notes.length > 0 && <> · {nl.notes.join(' ')}</>}</p>}
 
       <div className="pills" role="tablist" aria-label="Le tue ricerche salvate">
-        <button className={'pill' + (activeView === null && chips.length === 0 ? ' on' : '')} onClick={() => { setQ(tmdb.emptyQuery); setActiveView(null); setNl({ busy: false, err: '', info: '', notes: [] }) }}>Tutto</button>
+        <button className={'pill' + (activeView === null && !isFiltered ? ' on' : '')} onClick={() => { setQ(def); setActiveView(null); setNl({ busy: false, err: '', info: '', notes: [] }) }}>{def.providers.length ? 'Per me' : 'Tutto'}</button>
         {views.views.map((v) => (
           <button key={v.id} role="tab" aria-selected={activeView === v.id} className={'pill' + (activeView === v.id ? ' on' : '')} onClick={() => { setQ(v.query); setActiveView(v.id) }}>
             {v.name}
@@ -444,7 +261,20 @@ export function Explore({ seen, views, active, request }: {
         </div>
       )}
 
-      {filters && <FilterSheet q={q} set={set} reset={() => { setActiveView(null); setQ(tmdb.emptyQuery) }} count={visible.length} hasMine={mine.length > 0} onClose={() => setFilters(false)} />}
+      {filters && (
+        <FilterStudio
+          q={q}
+          base={def}
+          set={set}
+          reset={() => { setActiveView(null); setQ(def) }}
+          count={visible.length}
+          preview={visible}
+          loading={loading}
+          savedProviders={mine}
+          onSaveProviders={(ids) => personal.setPrefs({ providers: ids })}
+          onClose={() => setFilters(false)}
+        />
+      )}
       {manage && <ManageViews api={views} q={q} onClose={() => setManage(false)} />}
     </>
   )

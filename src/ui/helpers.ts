@@ -20,8 +20,15 @@ export interface ActiveChip {
 
 const MONETIZATION: Record<string, string> = { flatrate: 'In abbonamento', rent: 'Noleggio', buy: 'Acquisto' }
 
-/** Elenco dei filtri attivi, ognuno rimovibile. */
-export function activeChips(q: Query): ActiveChip[] {
+/** Elenco dei filtri attivi, ognuno rimovibile. Con `base` si escludono quelli già presenti di partenza (es. i tuoi abbonamenti). */
+export function activeChips(q: Query, base?: Query): ActiveChip[] {
+  const all = chipsOf(q)
+  if (!base) return all
+  const baseKeys = new Set(chipsOf(base).map((c) => c.key))
+  return all.filter((c) => !baseKeys.has(c.key))
+}
+
+function chipsOf(q: Query): ActiveChip[] {
   const out: ActiveChip[] = []
   const add = (key: string, label: string, clear: Partial<Query>) => out.push({ key, label, clear })
   for (const m of q.moods) {

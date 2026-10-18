@@ -188,15 +188,15 @@ export function Chip({ on, children, onClick }: { on?: boolean; children: ReactN
   )
 }
 
-export function Range({ label, value, min, max, step, suffix = '', onChange }: {
-  label: string; value: number; min: number; max: number; step: number; suffix?: string; onChange: (v: number) => void
+export function Range({ label, value, min, max, step, suffix = '', color, empty = 'Tutti', onChange }: {
+  label: string; value: number; min: number; max: number; step: number; suffix?: string; color?: string; empty?: string; onChange: (v: number) => void
 }) {
   const p = ((value - min) / (max - min)) * 100
   return (
     <label className="rng">
       <span className="k">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} style={{ ['--p' as string]: `${p}%` }} onChange={(e) => onChange(+e.target.value)} />
-      <span className="v">{value ? num(value) + suffix : 'Tutti'}</span>
+      <input type="range" min={min} max={max} step={step} value={value} style={{ ['--p' as string]: `${p}%`, ...(color ? { ['--rc' as string]: color } : {}) }} onChange={(e) => onChange(+e.target.value)} />
+      <span className="v">{value ? num(value) + suffix : empty}</span>
     </label>
   )
 }

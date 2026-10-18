@@ -188,14 +188,14 @@ export function Settings({ lists, views, replaceLists, src }: {
             <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
           </Section>
 
-          <Section id="platforms" icon="film" title="I tuoi abbonamenti" desc="Con questi, «Scegli per me» e i filtri possono mostrarti solo ciò che puoi guardare davvero.">
+          <Section id="platforms" icon="film" title="I tuoi abbonamenti" desc="Compaiono già selezionati nei filtri e in «Scegli per me», così vedi solo ciò che puoi guardare davvero.">
             <div className="row">
               {tmdb.PROVIDERS.map((pr) => (
                 <Chip key={pr.id} on={personal.prefs.providers.includes(pr.id)} onClick={() => personal.setPrefs({ providers: personal.prefs.providers.includes(pr.id) ? personal.prefs.providers.filter((x) => x !== pr.id) : [...personal.prefs.providers, pr.id] })}>{pr.name}</Chip>
               ))}
             </div>
             <div className="row" style={{ marginTop: 14 }}>
-              <Chip on={personal.prefs.useMine} onClick={() => personal.setPrefs({ useMine: !personal.prefs.useMine })}>Usa i miei abbonamenti nei consigli</Chip>
+              <Chip on={personal.prefs.useMine} onClick={() => personal.setPrefs({ useMine: !personal.prefs.useMine })}>Usa i miei abbonamenti nei consigli e nei filtri</Chip>
             </div>
           </Section>
 
