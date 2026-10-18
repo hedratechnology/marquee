@@ -47,6 +47,8 @@ function ConnRow({ name, desc, required, value, onSave, placeholder, getUrl, get
 }) {
   const [v, setV] = useState(value)
   const [saved, setSaved] = useState(false)
+  const [show, setShow] = useState(false)
+  const [copied, setCopied] = useState(false)
   const connected = !!(saved ? v : value)
   return (
     <div className="connrow">
@@ -60,8 +62,29 @@ function ConnRow({ name, desc, required, value, onSave, placeholder, getUrl, get
         </div>
         <Status ok={connected} label={connected ? 'Collegato' : required ? 'Obbligatorio' : 'Facoltativo'} />
       </div>
-      <div className="row">
-        <input className="field" type="password" autoComplete="off" value={v} placeholder={placeholder} onChange={(e) => { setV(e.target.value); setSaved(false) }} />
+      <div className="row keyrow">
+        <input className="field" type={show ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={v} placeholder={placeholder} onChange={(e) => { setV(e.target.value); setSaved(false) }} />
+        <button className="iconbtn" type="button" aria-label={show ? 'Nascondi la chiave' : 'Mostra la chiave'} aria-pressed={show} data-tip={show ? 'Nascondi la chiave' : 'Mostra la chiave'} onClick={() => setShow((x) => !x)}>
+          <Icon name={show ? 'eyeoff' : 'eye'} size={18} />
+        </button>
+        <button
+          className="iconbtn"
+          type="button"
+          disabled={!v}
+          aria-label="Copia la chiave"
+          data-tip={copied ? 'Copiata' : 'Copia la chiave'}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(v)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1500)
+            } catch {
+              setShow(true) // se il browser non permette di copiare, almeno la si può selezionare a mano
+            }
+          }}
+        >
+          <Icon name={copied ? 'check' : 'copy'} size={18} />
+        </button>
         <button className="btn gold" onClick={() => { onSave(v); setSaved(true) }}>{saved ? 'Salvata' : 'Salva'}</button>
       </div>
     </div>

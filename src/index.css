@@ -472,3 +472,7 @@ button[data-tip], .score span[data-tip] { position: relative; }
 .card .meta span { -webkit-line-clamp: 2; }
 
 @media (min-width: 980px) { .filters .group { padding: 8px 0; } .filters .hint { margin-top: 3px; } }
+
+.keyrow { flex-wrap: nowrap; }
+.keyrow .iconbtn { flex: none; }
+.keyrow .field { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 0.85rem; letter-spacing: 0; }
