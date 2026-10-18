@@ -90,7 +90,7 @@ export function mergeQueries(global: Query, type: MediaType, a: Query | null): Q
 }
 
 /** Il bacino di candidati: le prime pagine del catalogo con quei filtri, più i titoli che portano il nome cercato. */
-export async function fetchPool(prompt: string, type: MediaType, q: Query, mine: number[]): Promise<{ items: Title[]; named: Set<string> }> {
+export async function fetchPool(prompt: string, type: MediaType, q: Query, mine: number[]): Promise<{ items: Title[]; named: Set<string>; subs: Set<string> }> {
   const hint = Math.max(q.minTmdb, q.minImdb ? Math.max(0, q.minImdb - 1.2) : 0, q.minRt >= 80 ? 6.3 : 0, q.minMeta >= 70 ? 6.3 : 0)
   const eff: Query = {
     ...q,
@@ -99,7 +99,13 @@ export async function fetchPool(prompt: string, type: MediaType, q: Query, mine:
     minImdb: 0, minRt: 0, minMeta: 0, hideSeen: false, strictRatings: false,
     sort: 'popularity',
   }
-  const pages = await Promise.all([1, 2, 3].map((p) => tmdb.discover(eff, p).then((r) => r.items).catch(() => [] as Title[])))
+  // prima i titoli inclusi nell'abbonamento; noleggio e acquisto solo dopo, a meno che tu non abbia scelto una disponibilità precisa
+  const subOnly = q.monetization === 'any'
+  const fetchPages = (e: Query) => Promise.all([1, 2, 3].map((p) => tmdb.discover(e, p).then((r) => r.items).catch(() => [] as Title[])))
+  const subPages = subOnly ? await fetchPages({ ...eff, monetization: 'flatrate' }) : []
+  const pages = subOnly && eff.providers.length ? [] : await fetchPages(eff)
+  const subs = new Set(subPages.flat().map((t) => t.type + t.id))
+  pages.unshift(...subPages)
   const items: Title[] = []
   const seen = new Set<string>()
   const push = (t: Title) => {
@@ -118,7 +124,7 @@ export async function fetchPool(prompt: string, type: MediaType, q: Query, mine:
       push(t)
     }
   }
-  return { items, named }
+  return { items, named, subs }
 }
 
 export interface Proposal {
@@ -127,13 +133,13 @@ export interface Proposal {
 }
 
 /** Mette in ordine di priorità: voto, gusto personale, parole del prompt e posizione nel catalogo. */
-export function rankPool(items: Title[], named: Set<string>, keywords: string[], taste: Taste): Proposal[] {
+export function rankPool(items: Title[], named: Set<string>, subs: Set<string>, keywords: string[], taste: Taste): Proposal[] {
   const keys = keywords.map(plain).filter(Boolean)
   const scored = items.map((t, i) => {
     const hay = plain(`${t.title} ${t.overview}`)
     const hits = keys.filter((k) => hay.includes(k))
     const aff = affinity(t, taste)
-    const score = t.rating / 10 + 0.6 * aff + 0.4 * Math.min(1, hits.length / 2) + (named.has(t.type + t.id) ? 0.6 : 0) + (1 - i / Math.max(1, items.length)) * 0.3
+    const score = t.rating / 10 + 0.6 * aff + 0.4 * Math.min(1, hits.length / 2) + (named.has(t.type + t.id) ? 0.6 : 0) + (subs.has(t.type + t.id) ? 0.5 : 0) + (1 - i / Math.max(1, items.length)) * 0.3
     const why = hits.length ? `Nella trama: ${hits.slice(0, 2).join(', ')}` : named.has(t.type + t.id) ? 'Corrisponde al prompt' : aff > 0.3 ? 'Nei tuoi gusti' : ''
     return { t, why, score }
   })

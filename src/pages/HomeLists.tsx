@@ -67,7 +67,7 @@ function ListCard({ id }: { id: ListId }) {
   const name = id === 'together' ? 'Insieme' : id === 'a' ? prefs.people[0] : prefs.people[1]
   const [draft, setDraft] = useState(saved)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [pool, setPool] = useState<{ items: Title[]; named: Set<string> } | null>(null)
+  const [pool, setPool] = useState<{ items: Title[]; named: Set<string>; subs: Set<string> } | null>(null)
   const [busy, setBusy] = useState(false)
   const [count, setCount] = useState(STEP)
 
@@ -106,7 +106,7 @@ function ListCard({ id }: { id: ListId }) {
   }, [serverKey, analysis, saved, type])
 
   const known = new Set([...lists.seen, ...lists.dropped, ...lists.hidden].map((t) => t.type + t.id))
-  const ranked = useMemo(() => (pool && analysis ? rankPool(pool.items, pool.named, analysis.keywords, taste) : []), [pool, analysis, taste])
+  const ranked = useMemo(() => (pool && analysis ? rankPool(pool.items, pool.named, pool.subs, analysis.keywords, taste) : []), [pool, analysis, taste])
   const ratingWait = !!(merged && (merged.minImdb || merged.minRt || merged.minMeta)) && R.enabled && R.pending > 0
   const visible = merged
     ? ranked.filter(({ t }) => !known.has(t.type + t.id) && matchesQuery({ type: t.type, id: t.id, year: t.year, genreIds: t.genreIds ?? [], rating: t.rating, lang: undefined }, merged, env))
