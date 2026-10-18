@@ -19,6 +19,12 @@ export function scoreTip(label: string): string {
   return label
 }
 
+/** Dove si guarda in Italia, in una riga. */
+export function platformText(f: Pick<tmdb.Facts, 'providers' | 'rentBuyOnly'>): string {
+  if (f.providers.length) return f.providers.slice(0, 3).map((p) => p.name).join(' · ')
+  return f.rentBuyOnly ? 'Solo noleggio o acquisto' : 'Non in streaming'
+}
+
 export function scoreChips(t: Title, r: Ratings | undefined, enabled: boolean): string[] {
   const list: string[] = []
   if (r?.imdb !== undefined) list.push(`IMDb ${num(r.imdb)}`)
@@ -96,6 +102,7 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
         {t && facts && quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts }) && (
           <span className="qline">{quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts })}</span>
         )}
+        {facts && <span className="plat" data-tip="Dove lo guardi in Italia"><Icon name="tv" size={12} />{platformText(facts)}</span>}
         {(votes.length > 0 || loadingVotes) && (
           <span className="votes">
             {votes.map((c, i) => (

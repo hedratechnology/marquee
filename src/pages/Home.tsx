@@ -11,6 +11,7 @@ import { useTaste } from '../ui/ctx'
 import { affinity, confidence } from '../taste'
 import { matchesQuery, useFilterEnv } from '../filtering'
 import { bestToTitle, useBest } from '../ui/data'
+import { HomeLists } from './HomeLists'
 
 export type Goto = 'pick' | 'library' | 'taste' | 'together' | 'best' | 'explore' | 'settings'
 
@@ -202,6 +203,8 @@ export function Home({ favorites, seen, goto, listCount, active }: { favorites: 
         <span><b>Scegliamo insieme</b> Due persone, un punto d'incontro. Senza account.</span>
         <Icon name="arrow" size={18} />
       </button>
+
+      <HomeLists />
 
       <Expiring onCount={setExpiringCount} />
       <TitleRail title="Consigliati per te" items={recsF} />

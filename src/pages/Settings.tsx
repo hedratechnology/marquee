@@ -18,6 +18,7 @@ const SECTIONS = [
   { id: 'connections', icon: 'link', label: 'Collegamenti' },
   { id: 'platforms', icon: 'film', label: 'Abbonamenti' },
   { id: 'prefs', icon: 'globe', label: 'Lingua e disponibilità' },
+  { id: 'people', icon: 'users', label: 'Liste della home' },
   { id: 'ai', icon: 'spark', label: 'Intelligenza artificiale' },
   { id: 'sources', icon: 'list', label: 'Fonti e profili' },
   { id: 'backup', icon: 'down', label: 'Backup' },
@@ -209,6 +210,21 @@ export function Settings({ lists, views, replaceLists, src }: {
             <div className="row">
               <Chip on={!personal.prefs.lang} onClick={() => personal.setPrefs({ lang: '' })}>Qualsiasi</Chip>
               {tmdb.LANGS.map((l) => <Chip key={l.id} on={personal.prefs.lang === l.id} onClick={() => personal.setPrefs({ lang: personal.prefs.lang === l.id ? '' : l.id })}>{l.label}</Chip>)}
+            </div>
+          </Section>
+
+          <Section id="people" icon="users" title="Liste della home" desc="I nomi delle due liste personali, accanto a «Insieme».">
+            <div className="row" style={{ gap: 10 }}>
+              {[0, 1].map((i) => (
+                <input
+                  key={i}
+                  value={personal.prefs.people[i]}
+                  maxLength={20}
+                  aria-label={`Nome della lista ${i + 1}`}
+                  onChange={(e) => personal.setPrefs({ people: (i === 0 ? [e.target.value, personal.prefs.people[1]] : [personal.prefs.people[0], e.target.value]) as [string, string] })}
+                  onBlur={(e) => !e.target.value.trim() && personal.setPrefs({ people: (i === 0 ? ['Luca', personal.prefs.people[1]] : [personal.prefs.people[0], 'Lara']) as [string, string] })}
+                />
+              ))}
             </div>
           </Section>
 

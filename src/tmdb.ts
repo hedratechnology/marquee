@@ -465,6 +465,9 @@ export interface Facts {
   seasons: number | null
   episodes: number | null
   status: string | null
+  /** dove si guarda in Italia: abbonamento, e se solo noleggio o acquisto */
+  providers: Provider[]
+  rentBuyOnly: boolean
 }
 
 const factsCache = new Map<string, Promise<Facts | null>>()
@@ -474,14 +477,20 @@ export function titleFacts(type: MediaType, id: number): Promise<Facts | null> {
   const k = `${type}:${id}`
   let p = factsCache.get(k)
   if (!p) {
-    p = call<{ runtime?: number; episode_run_time?: number[]; last_episode_to_air?: { runtime?: number }; number_of_seasons?: number; number_of_episodes?: number; status?: string }>(`/${type}/${id}`)
-      .then((d) => ({
+    p = call<{ runtime?: number; episode_run_time?: number[]; last_episode_to_air?: { runtime?: number }; number_of_seasons?: number; number_of_episodes?: number; status?: string; 'watch/providers'?: { results?: Record<string, { flatrate?: unknown[]; rent?: unknown[]; buy?: unknown[] }> } }>(`/${type}/${id}`, { append_to_response: 'watch/providers' })
+      .then((d) => {
+        const it = d['watch/providers']?.results?.[REGION]
+        const providers = mapProviders(it?.flatrate as never)
+        return {
         runtimeMin: type === 'movie' ? d.runtime || null : null,
         episodeRuntime: type === 'tv' ? d.episode_run_time?.[0] ?? d.last_episode_to_air?.runtime ?? null : null,
         seasons: type === 'tv' ? d.number_of_seasons ?? null : null,
         episodes: type === 'tv' ? d.number_of_episodes ?? null : null,
         status: d.status ?? null,
-      }))
+        providers,
+        rentBuyOnly: !providers.length && !!(it?.rent?.length || it?.buy?.length),
+        }
+      })
       .catch(() => {
         factsCache.delete(k)
         return null

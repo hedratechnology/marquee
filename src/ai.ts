@@ -66,6 +66,8 @@ async function askJson<T>({ model, system, user, schema, maxTokens = 8000 }: Ask
 
 export interface NlQuery {
   summary: string
+  /** parole chiave in italiano (temi, ambientazione) da cercare nelle trame */
+  keywords: string[]
   kinds: Kind[]
   moods: Mood[]
   genres: string[]
@@ -91,11 +93,12 @@ const NL_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
   required: [
-    'summary', 'kinds', 'moods', 'genres', 'genreMode', 'maxFilmMinutes', 'maxEpisodeMinutes', 'yearFrom', 'yearTo',
+    'summary', 'keywords', 'kinds', 'moods', 'genres', 'genreMode', 'maxFilmMinutes', 'maxEpisodeMinutes', 'yearFrom', 'yearTo',
     'language', 'country', 'minRating', 'status', 'gentle', 'hideSeen', 'onlyMine', 'monetization', 'actor', 'director', 'company',
   ],
   properties: {
     summary: { type: 'string' },
+    keywords: { type: 'array', items: { type: 'string' } },
     kinds: { type: 'array', items: { type: 'string', enum: ['film', 'series', 'miniseries', 'doc', 'animation'] } },
     moods: { type: 'array', items: { type: 'string', enum: ['light', 'cozy', 'intense', 'mystery', 'fun', 'adventure'] } },
     genres: { type: 'array', items: { type: 'string' } },
@@ -136,6 +139,7 @@ Regole:
 - hideSeen: true se esclude i già visti. onlyMine: true se parla dei propri abbonamenti o di piattaforme che ha. monetization: "rent" se parla di noleggio, "buy" di acquisto, "flatrate" se vuole solo ciò che è incluso nell'abbonamento.
 - actor / director: solo nomi propri indicati dall'utente.
 - company: con chi guarda (solo, couple, friends, family) se lo dice.
+- keywords: da 2 a 5 parole chiave in italiano (temi, ambientazione, tipo di personaggi) utili a cercare nelle trame; lascia vuoto se la richiesta è solo di filtri.
 - summary: una frase in italiano, breve, che riassume come hai capito la richiesta.
 Non inventare filtri non richiesti.`
 }
@@ -148,6 +152,7 @@ export interface NlApplied {
   query: Query
   summary: string
   notes: string[]
+  keywords: string[]
 }
 
 /** Traduce la risposta del modello in una Query dell'app, risolvendo nomi di persone e generi. */
@@ -193,7 +198,7 @@ export async function nlToQuery(nl: NlQuery, genres: GenreEntry[], mine: number[
   }
   if (nl.genres.length > wanted.length) notes.push('Qualche genere non l\'ho riconosciuto e l\'ho ignorato.')
   if (q.director && !q.kinds.includes('film')) notes.push('Il filtro regista vale solo per i film.')
-  return { query: q, summary: nl.summary, notes }
+  return { query: q, summary: nl.summary, notes, keywords: (nl.keywords ?? []).filter((k) => k.trim()).slice(0, 6) }
 }
 
 /** Dalla frase ai filtri pronti per Esplora, in un solo passaggio. */

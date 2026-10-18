@@ -21,13 +21,13 @@ import { ManageViews } from './pages/SavedSearches'
 import { Best } from './pages/Best'
 import { Library } from './pages/Library'
 import type { LibraryTab } from './pages/Library'
-import { SearchPage } from './pages/SearchPage'
+import { SearchBar } from './pages/SearchBar'
 import { Settings } from './pages/Settings'
 import { Detail } from './pages/Detail'
 import { PickPage } from './pages/Pick'
 import { TogetherPage } from './pages/Together'
 
-type Tab = 'home' | 'pick' | 'together' | 'explore' | 'best' | 'library' | 'search' | 'settings'
+type Tab = 'home' | 'pick' | 'together' | 'explore' | 'best' | 'library' | 'settings'
 
 const NAV: { id: Tab; label: string; icon: string }[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -38,7 +38,7 @@ const NAV: { id: Tab; label: string; icon: string }[] = [
 
 /** Sezioni raggiunte dalla home: nel menu resta evidenziata la Home. */
 const NAV_OF: Record<Tab, Tab | null> = {
-  home: 'home', pick: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', search: null, settings: null,
+  home: 'home', pick: 'home', together: 'home', explore: 'explore', best: 'best', library: 'library', settings: null,
 }
 
 function readIncoming(): TogetherPayload | null {
@@ -54,6 +54,7 @@ function Shell() {
   const [incoming, setIncoming] = useState<TogetherPayload | null>(incomingAtStart)
   const [sel, setSel] = useState<Title | null>(null)
   const [manageViews, setManageViews] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [libTab, setLibTab] = useState<LibraryTab>('watchlist')
   const { lists, has, toggle, replace } = useListsStore()
   const views = useViews()
@@ -81,12 +82,13 @@ function Shell() {
   }, [])
 
   const go = (t: Tab) => {
-    const overlay = (x: Tab) => x === 'settings' || x === 'search'
+    const overlay = (x: Tab) => x === 'settings'
     if (overlay(t)) {
       if (tab === t) t = back
       else if (!overlay(tab)) setBack(tab)
     }
     setTab(t)
+    if (t === 'explore') setSearchOpen(false) // in Esplora il campo di ricerca è già nella pagina
     window.scrollTo({ top: 0 })
   }
   const listCount = lists.watchlist.length + lists.favorites.length + lists.seen.length
@@ -96,7 +98,12 @@ function Shell() {
   }
   // i filtri valgono in Home, Esplora, Il meglio e Liste; dalle altre pagine l'icona porta in Esplora
   const filterable = tab === 'home' || tab === 'explore' || tab === 'best' || tab === 'library'
+  const toggleSearch = () => {
+    setSearchOpen((o) => !o)
+    F.setOpen(false)
+  }
   const toggleFilters = () => {
+    setSearchOpen(false)
     if (!filterable) {
       go('explore')
       F.setOpen(true)
@@ -122,13 +129,18 @@ function Shell() {
                 <Icon name="filter" size={19} /><span>Filtri</span>
                 {F.chips.length > 0 && <i className="hbadge">{F.chips.length}</i>}
               </button>
-              {tab !== 'explore' && <button className={'iconbtn' + (tab === 'search' ? ' on' : '')} onClick={() => go('search')} aria-label="Cerca" data-tip={tab === 'search' ? 'Torna alla schermata precedente' : 'Cerca un titolo o descrivilo con l\'IA'}><Icon name="search" size={19} /></button>}
+              {tab !== 'explore' && (
+                <button className={'iconbtn' + (searchOpen ? ' on' : '')} onClick={toggleSearch} aria-label="Cerca" aria-expanded={searchOpen} data-tip={searchOpen ? 'Chiudi la ricerca' : 'Cerca un titolo o descrivilo con l\'IA'}>
+                  <Icon name="search" size={19} />
+                </button>
+              )}
               <button className={'hbtn' + (tab === 'settings' ? ' on' : '')} onClick={() => go('settings')} aria-label="Impostazioni" data-tip={tab === 'settings' ? 'Torna alla schermata precedente' : 'Impostazioni: abbonamenti, chiavi, IA, backup'}>
                 <Icon name="gear" size={19} /><span>Impostazioni</span>
               </button>
             </header>
 
             <FilterBar views={views} onManage={() => setManageViews(true)} />
+            {searchOpen && tab !== 'explore' && <SearchBar onClose={() => setSearchOpen(false)} onApplyQuery={(q, info) => { setSearchOpen(false); applyQuery(q, info) }} />}
             {filterable && !F.open && <FilterStrip showNotice={tab !== 'explore'} />}
 
             <main>
@@ -147,7 +159,6 @@ function Shell() {
               {tab === 'together' && <TogetherPage key={incoming ? 'in' : 'out'} lists={lists} incoming={incoming} onExit={() => { setIncoming(null); go('home') }} />}
               {tab === 'best' && <Best seen={lists.seen} sources={src.sources} />}
               {tab === 'library' && <Library lists={lists} tab={libTab} setTab={setLibTab} />}
-              {tab === 'search' && <SearchPage onApplyQuery={applyQuery} />}
               {tab === 'settings' && <Settings lists={lists} views={views} replaceLists={replace} src={src} />}
             </main>
           </div>

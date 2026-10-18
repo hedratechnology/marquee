@@ -41,9 +41,21 @@ export interface Prefs {
   lang: string
   /** genera in automatico la scheda ragionata con l'IA quando apri un titolo (usa crediti) */
   autoBlurb: boolean
+  /** i due nomi delle liste personali in Home */
+  people: [string, string]
+  /** il prompt di ogni lista in Home, salvato */
+  listPrompts: Record<ListId, string>
+  /** film o serie TV per ogni lista */
+  listKinds: Record<ListId, 'movie' | 'tv'>
 }
 
-export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5', onlyItaly: true, lang: '', autoBlurb: false }
+export type ListId = 'together' | 'a' | 'b'
+
+export const DEFAULT_PREFS: Prefs = { providers: [], useMine: true, aiModel: 'claude-opus-5-5', onlyItaly: true, lang: '', autoBlurb: false,
+  people: ['Luca', 'Lara'],
+  listPrompts: { together: '', a: '', b: '' },
+  listKinds: { together: 'movie', a: 'movie', b: 'movie' },
+}
 
 export interface PersonalSnapshot {
   tags: Record<string, Tag[]>
