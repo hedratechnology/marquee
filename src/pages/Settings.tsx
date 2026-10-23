@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import * as tmdb from '../tmdb'
 import { getOmdbKey, setOmdbKey } from '../omdb'
@@ -10,19 +10,70 @@ import { Chip } from '../ui/components'
 import { Icon } from '../ui/icons'
 import { AI_MODELS, getAiKey, getOwnAiKey, setAiKey } from '../ai'
 import { usePersonal } from '../personal'
+import type { ListId } from '../personal'
+import { listName } from './HomeLists'
 
 type ViewsApi = ReturnType<typeof useViews>
 const PLATFORM_LABEL: Record<Platform, string> = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', x: 'X', other: 'Link' }
 
 const SECTIONS = [
-  { id: 'connections', icon: 'link', label: 'Collegamenti' },
+  { id: 'people', icon: 'users', label: 'Liste della home' },
   { id: 'platforms', icon: 'film', label: 'Abbonamenti' },
   { id: 'prefs', icon: 'globe', label: 'Lingua e disponibilità' },
-  { id: 'people', icon: 'users', label: 'Liste della home' },
   { id: 'ai', icon: 'spark', label: 'Intelligenza artificiale' },
   { id: 'sources', icon: 'list', label: 'Fonti e profili' },
   { id: 'backup', icon: 'down', label: 'Backup' },
+  { id: 'connections', icon: 'link', label: 'Chiavi personali' },
 ]
+
+const LIST_IDS: ListId[] = ['together', 'a', 'b']
+const PLACEHOLDER: Record<ListId, string> = {
+  together: 'es. una commedia che ci faccia ridere, poco violenta',
+  a: 'es. thriller psicologici con un finale che spiazza',
+  b: 'es. storie d\'amore ben scritte, anche in costume',
+}
+
+/** Una lista della home: nome (per le due personali) e richiesta per l'IA. */
+function ListPrompt({ id }: { id: ListId }) {
+  const { prefs, setPrefs } = usePersonal()
+  const saved = prefs.listPrompts[id]
+  const [draft, setDraft] = useState(saved)
+  const [savedNow, setSavedNow] = useState(false)
+  useEffect(() => setDraft(saved), [saved])
+  const idx = id === 'a' ? 0 : 1
+  const name = listName(id, prefs.people)
+  const save = () => {
+    setPrefs({ listPrompts: { ...prefs.listPrompts, [id]: draft.trim() } })
+    setSavedNow(true)
+    setTimeout(() => setSavedNow(false), 1500)
+  }
+  return (
+    <div className="lprompt">
+      <div className="lprompt-head">
+        {id === 'together' ? (
+          <b>Insieme</b>
+        ) : (
+          <input
+            className="lname"
+            value={prefs.people[idx]}
+            maxLength={20}
+            aria-label="Nome della lista"
+            onChange={(e) => setPrefs({ people: (idx === 0 ? [e.target.value, prefs.people[1]] : [prefs.people[0], e.target.value]) as [string, string] })}
+            onBlur={(e) => !e.target.value.trim() && setPrefs({ people: (idx === 0 ? ['Luca', prefs.people[1]] : [prefs.people[0], 'Lara']) as [string, string] })}
+          />
+        )}
+        <div className="seg sm" role="tablist" aria-label={`Film o serie TV per ${name}`}>
+          <button role="tab" aria-selected={prefs.listKinds[id] === 'movie'} className={prefs.listKinds[id] === 'movie' ? 'on' : ''} onClick={() => setPrefs({ listKinds: { ...prefs.listKinds, [id]: 'movie' } })}>Film</button>
+          <button role="tab" aria-selected={prefs.listKinds[id] === 'tv'} className={prefs.listKinds[id] === 'tv' ? 'on' : ''} onClick={() => setPrefs({ listKinds: { ...prefs.listKinds, [id]: 'tv' } })}>Serie</button>
+        </div>
+      </div>
+      <form className="row" onSubmit={(e) => { e.preventDefault(); save() }}>
+        <input className="field" value={draft} placeholder={PLACEHOLDER[id]} aria-label={`Cosa vuole vedere ${name}`} onChange={(e) => setDraft(e.target.value)} />
+        <button className="btn gold" type="submit" disabled={draft.trim() === saved && !savedNow}>{savedNow ? 'Salvata' : 'Salva'}</button>
+      </form>
+    </div>
+  )
+}
 
 function Section({ id, icon, title, desc, children }: { id: string; icon: string; title: string; desc?: string; children: ReactNode }) {
   return (
@@ -169,7 +220,7 @@ export function Settings({ lists, views, replaceLists, src }: {
   return (
     <>
       <h1 className="page-title">Impostazioni</h1>
-      <p className="lede">Tutto resta su questo dispositivo: chiavi, liste e preferenze.</p>
+      <p className="lede">Liste, gusti e preferenze restano su questo dispositivo.</p>
       <div className="statusrow" aria-label="Stato dei collegamenti">
         <Status ok={tmdbOk} label="Film e serie" />
         <Status ok={omdbOk} label="Voti IMDb e Rotten Tomatoes" />
@@ -184,10 +235,8 @@ export function Settings({ lists, views, replaceLists, src }: {
         </nav>
 
         <div className="setmain">
-          <Section id="connections" icon="link" title="Collegamenti" desc="Le chiavi gratuite che fanno funzionare Marquee. Restano solo su questo dispositivo.">
-            <ConnRow name="TMDB" required desc="Film, serie, cast e dove guardarli. È gratuita." value={tmdb.getKey()} onSave={(v) => { tmdb.setKey(v); setVersion((n) => n + 1) }} placeholder="Chiave API o token Read Access" getUrl="https://www.themoviedb.org/settings/api" getHow="Crea un account, poi Impostazioni → API → richiedi una chiave (uso personale) e copia la «API Key»." />
-            <ConnRow name="OMDb" desc="Voti di IMDb, Rotten Tomatoes e Metacritic. Il piano gratuito dà 1.000 richieste al giorno." value={getOmdbKey()} onSave={(v) => { setOmdbKey(v); setVersion((n) => n + 1) }} placeholder="Chiave OMDb" getUrl="https://www.omdbapi.com/apikey.aspx" getHow="Scegli il piano FREE, inserisci l'email e clicca il link di attivazione che ti arriva." />
-            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getOwnAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
+          <Section id="people" icon="users" title="Liste della home" desc="Una frase per lista: l'IA la legge e propone 5 titoli in ordine, tra quelli che passano i filtri.">
+            {LIST_IDS.map((id) => <ListPrompt key={id} id={id} />)}
           </Section>
 
           <Section id="platforms" icon="film" title="I tuoi abbonamenti" desc="Compaiono già selezionati nei filtri e in «Scegli per me», così vedi solo ciò che puoi guardare davvero.">
@@ -210,21 +259,6 @@ export function Settings({ lists, views, replaceLists, src }: {
             <div className="row">
               <Chip on={!personal.prefs.lang} onClick={() => personal.setPrefs({ lang: '' })}>Qualsiasi</Chip>
               {tmdb.LANGS.map((l) => <Chip key={l.id} on={personal.prefs.lang === l.id} onClick={() => personal.setPrefs({ lang: personal.prefs.lang === l.id ? '' : l.id })}>{l.label}</Chip>)}
-            </div>
-          </Section>
-
-          <Section id="people" icon="users" title="Liste della home" desc="I nomi delle due liste personali, accanto a «Insieme».">
-            <div className="row" style={{ gap: 10 }}>
-              {[0, 1].map((i) => (
-                <input
-                  key={i}
-                  value={personal.prefs.people[i]}
-                  maxLength={20}
-                  aria-label={`Nome della lista ${i + 1}`}
-                  onChange={(e) => personal.setPrefs({ people: (i === 0 ? [e.target.value, personal.prefs.people[1]] : [personal.prefs.people[0], e.target.value]) as [string, string] })}
-                  onBlur={(e) => !e.target.value.trim() && personal.setPrefs({ people: (i === 0 ? ['Luca', personal.prefs.people[1]] : [personal.prefs.people[0], 'Lara']) as [string, string] })}
-                />
-              ))}
             </div>
           </Section>
 
@@ -273,6 +307,12 @@ export function Settings({ lists, views, replaceLists, src }: {
                 <input type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && importJson(e.target.files[0])} />
               </label>
             </div>
+          </Section>
+
+          <Section id="connections" icon="link" title="Chiavi personali" desc="Non servono: il sito ha già le sue. Inseriscine una solo se vuoi usare un tuo account; resta su questo dispositivo e vince su quella del sito.">
+            <ConnRow name="TMDB" required desc="Film, serie, cast e dove guardarli. È gratuita." value={tmdb.getKey()} onSave={(v) => { tmdb.setKey(v); setVersion((n) => n + 1) }} placeholder="Chiave API o token Read Access" getUrl="https://www.themoviedb.org/settings/api" getHow="Crea un account, poi Impostazioni → API → richiedi una chiave (uso personale) e copia la «API Key»." />
+            <ConnRow name="OMDb" desc="Voti di IMDb, Rotten Tomatoes e Metacritic. Il piano gratuito dà 1.000 richieste al giorno." value={getOmdbKey()} onSave={(v) => { setOmdbKey(v); setVersion((n) => n + 1) }} placeholder="Chiave OMDb" getUrl="https://www.omdbapi.com/apikey.aspx" getHow="Scegli il piano FREE, inserisci l'email e clicca il link di attivazione che ti arriva." />
+            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getOwnAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
           </Section>
 
           <p className="muted" style={{ margin: '8px 4px 0' }}>Questo prodotto usa l'API di TMDB ma non è approvato o certificato da TMDB.</p>

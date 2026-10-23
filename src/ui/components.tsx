@@ -36,12 +36,12 @@ export function Platforms({ facts, title }: { facts: tmdb.Facts; title: string }
     return (
       <>
         <span className="plat" data-tip="Dove lo guardi in Italia, con l'abbonamento"><Icon name="tv" size={12} /><span>{links(facts.providers)}</span></span>
-        {facts.rent.length > 0 && <span className="plat sub"><span>Anche a noleggio: {links(facts.rent)}</span></span>}
+        {facts.rent.length > 0 && <span className="plat sub"><span>Noleggio: {links(facts.rent)}</span></span>}
       </>
     )
   }
   if (facts.rent.length) {
-    return <span className="plat" data-tip="Non è in abbonamento: si noleggia o si compra"><Icon name="tv" size={12} /><span>Noleggio o acquisto: {links(facts.rent)}</span></span>
+    return <span className="plat" data-tip="Non è in abbonamento: si noleggia o si compra"><Icon name="tv" size={12} /><span>Noleggio: {links(facts.rent)}</span></span>
   }
   return <span className="plat"><Icon name="tv" size={12} /><span>Non in streaming in Italia</span></span>
 }
@@ -111,9 +111,10 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
             <Icon name="bookmark" size={16} fill={watch} />
           </button>
         </div>
-        {topScore && (
+        {(topScore || votes.length > 0) && (
           <div className="score">
-            <span className="top" data-tip="Punteggio Marquee da 0 a 100: critica, pubblico e premi">{topScore}</span>
+            {topScore && <span className="top" data-tip="Punteggio Marquee da 0 a 100: critica, pubblico e premi">{topScore}</span>}
+            {votes.slice(0, 2).map((c) => <span key={c} data-tip={scoreTip(c)}>{c}</span>)}
           </div>
         )}
       </div>
@@ -124,14 +125,7 @@ export function PosterCard({ t, name, sub, tag, tagTone = 'red', rank, scores, t
           <span className="qline">{quickLine({ type: t.type, genreIds: t.genreIds ?? [], ...facts })}</span>
         )}
         {t && facts && <Platforms facts={facts} title={t.title} />}
-        {(votes.length > 0 || loadingVotes) && (
-          <span className="votes">
-            {votes.map((c, i) => (
-              <span key={c} data-tip={scoreTip(c)}>{i > 0 && <i aria-hidden="true"> · </i>}{c}</span>
-            ))}
-            {loadingVotes && <span className="faint">Voti…</span>}
-          </span>
-        )}
+        {loadingVotes && <span className="votes"><span className="faint">Voti…</span></span>}
       </div>
     </div>
   )
@@ -148,13 +142,14 @@ export function TitleGrid({ items, empty }: { items: Title[]; empty?: ReactNode 
   )
 }
 
-export function Rail({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+export function Rail({ title, action, lead, children }: { title: string; action?: ReactNode; lead?: ReactNode; children: ReactNode }) {
   return (
     <section className="rail-wrap">
       <div className="rail-head">
         <h2 className="sec">{title}</h2>
         {action}
       </div>
+      {lead}
       <div className="rail">{children}</div>
     </section>
   )

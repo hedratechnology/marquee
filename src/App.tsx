@@ -145,7 +145,7 @@ function Shell() {
 
             <main>
               <div hidden={tab !== 'home'}>
-                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => { if (t === 'taste') { setLibTab('taste'); go('library') } else go(t) }} />
+                <Home favorites={lists.favorites} seen={lists.seen} listCount={listCount} active={tab === 'home'} goto={(t: Goto) => { if (t === 'taste') { setLibTab('taste'); go('library') } else if (t === 'lists') { go('settings'); setTimeout(() => document.getElementById('set-people')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) } else go(t) }} />
               </div>
               <div hidden={tab !== 'explore'}>
                 <Explore active={tab === 'explore'} />

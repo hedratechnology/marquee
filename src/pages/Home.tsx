@@ -13,7 +13,7 @@ import { matchesQuery, useFilterEnv } from '../filtering'
 import { bestToTitle, useBest } from '../ui/data'
 import { HomeLists } from './HomeLists'
 
-export type Goto = 'pick' | 'library' | 'taste' | 'together' | 'best' | 'explore' | 'settings'
+export type Goto = 'pick' | 'library' | 'taste' | 'together' | 'best' | 'explore' | 'settings' | 'lists'
 
 interface ExpiringItem {
   type: tmdb.MediaType
@@ -116,13 +116,11 @@ function Expiring({ onCount }: { onCount: (n: number) => void }) {
   )
 }
 
-function Entrance({ icon, title, text, onClick, accent }: { icon: string; title: string; text: string; onClick: () => void; accent?: boolean }) {
+function Shortcut({ icon, title, onClick, accent }: { icon: string; title: string; onClick: () => void; accent?: boolean }) {
   return (
-    <button className={'entrance' + (accent ? ' accent' : '')} onClick={onClick}>
-      <span className="eicon"><Icon name={icon} size={26} /></span>
-      <b>{title}</b>
-      <span>{text}</span>
-      <span className="go"><Icon name="arrow" size={18} /></span>
+    <button className={'shortcut' + (accent ? ' accent' : '')} onClick={onClick}>
+      <Icon name={icon} size={18} />
+      <span>{title}</span>
     </button>
   )
 }
@@ -189,22 +187,15 @@ export function Home({ favorites, seen, goto, listCount, active }: { favorites: 
 
   return (
     <>
-      <span className="eyebrow" style={{ display: 'block', marginTop: 18 }}>Stasera</span>
       <h1 className="page-title hero-title">Cosa ti va di vedere?</h1>
-      <p className="lede">Scegli come arrivarci: in pochi minuti, senza scorrere cataloghi infiniti.</p>
-
-      <div className="entrances">
-        <Entrance accent icon="spark" title="Scegli per me" text="Umore, tempo e compagnia: tre proposte, con i motivi." onClick={() => goto('pick')} />
-        <Entrance icon="spark" title="Il tuo gusto" text={taste.samples + taste.reacted ? `Preciso al ${confidence(taste).pct}%: lascia una reazione per affinarlo.` : 'Lascia qualche reazione: imparo cosa ti piace davvero.'} onClick={() => goto('taste')} />
-        <Entrance icon="bookmark" title="La mia lista" text={listCount ? `${listCount} titoli salvati, organizzati.` : 'Da vedere, preferiti, visti: tutto in ordine.'} onClick={() => goto('library')} />
+      <div className="shortcuts" aria-label="Scorciatoie">
+        <Shortcut accent icon="spark" title="Scegli per me" onClick={() => goto('pick')} />
+        <Shortcut icon="users" title="Insieme" onClick={() => goto('together')} />
+        <Shortcut icon="heart" title={taste.samples + taste.reacted ? `Gusto ${confidence(taste).pct}%` : 'Il tuo gusto'} onClick={() => goto('taste')} />
+        <Shortcut icon="bookmark" title={listCount ? `Liste · ${listCount}` : 'Le mie liste'} onClick={() => goto('library')} />
       </div>
-      <button className="banner" onClick={() => goto('together')}>
-        <Icon name="users" size={22} />
-        <span><b>Scegliamo insieme</b> Due persone, un punto d'incontro. Senza account.</span>
-        <Icon name="arrow" size={18} />
-      </button>
 
-      <HomeLists />
+      <HomeLists onEdit={() => goto('lists')} />
 
       <Expiring onCount={setExpiringCount} />
       <TitleRail title="Consigliati per te" items={recsF} />
