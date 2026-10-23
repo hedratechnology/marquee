@@ -153,7 +153,8 @@ export const COUNTRIES = [
   { id: 'JP', label: 'Giappone' },
 ]
 
-export const getKey = () => localStorage.getItem('tmdb_key') ?? ''
+/** la chiave salvata sul dispositivo, altrimenti quella inclusa nel sito (così il telefono funziona senza inserire nulla) */
+export const getKey = () => localStorage.getItem('tmdb_key') || (import.meta.env.VITE_TMDB_KEY as string | undefined) || ''
 export const setKey = (k: string) => localStorage.setItem('tmdb_key', k.trim())
 
 type Params = Record<string, string | number | undefined>

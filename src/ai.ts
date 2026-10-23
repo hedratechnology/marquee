@@ -7,7 +7,10 @@ export const AI_MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 · la più economica' },
 ]
 
-export const getAiKey = () => localStorage.getItem('anthropic_key') ?? ''
+/** indirizzo del proxy IA (Cloudflare Worker) che tiene la chiave Anthropic fuori dal sito */
+const AI_PROXY = (import.meta.env.VITE_AI_PROXY as string | undefined) ?? ''
+export const getOwnAiKey = () => localStorage.getItem('anthropic_key') ?? ''
+export const getAiKey = () => getOwnAiKey() || (AI_PROXY ? 'proxy' : '')
 export const setAiKey = (k: string) => localStorage.setItem('anthropic_key', k.trim())
 
 export class AiError extends Error {}
@@ -41,7 +44,7 @@ async function askJson<T>({ model, system, user, schema, maxTokens = 8000 }: Ask
   if (!key) throw new AiError('Inserisci la chiave Anthropic in Impostazioni.')
   // l'SDK pesa parecchio: si scarica solo quando serve davvero l'IA
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
-  const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true })
+  const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true, ...(getOwnAiKey() ? {} : { baseURL: AI_PROXY }) })
   const res = await client.beta.messages.create({
     model,
     max_tokens: maxTokens,

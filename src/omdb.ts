@@ -11,7 +11,7 @@ export interface Ratings {
 const CACHE_KEY = 'ratings_v1'
 const MAX_PARALLEL = 3
 
-export const getOmdbKey = () => localStorage.getItem('omdb_key') ?? ''
+export const getOmdbKey = () => localStorage.getItem('omdb_key') || (import.meta.env.VITE_OMDB_KEY as string | undefined) || ''
 export const setOmdbKey = (k: string) => {
   localStorage.setItem('omdb_key', k.trim())
   limited = false

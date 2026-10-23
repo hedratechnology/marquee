@@ -8,7 +8,7 @@ import { SUGGESTED_SOURCES } from '../sources'
 import type { Platform, useSources } from '../sources'
 import { Chip } from '../ui/components'
 import { Icon } from '../ui/icons'
-import { AI_MODELS, getAiKey, setAiKey } from '../ai'
+import { AI_MODELS, getAiKey, getOwnAiKey, setAiKey } from '../ai'
 import { usePersonal } from '../personal'
 
 type ViewsApi = ReturnType<typeof useViews>
@@ -187,7 +187,7 @@ export function Settings({ lists, views, replaceLists, src }: {
           <Section id="connections" icon="link" title="Collegamenti" desc="Le chiavi gratuite che fanno funzionare Marquee. Restano solo su questo dispositivo.">
             <ConnRow name="TMDB" required desc="Film, serie, cast e dove guardarli. È gratuita." value={tmdb.getKey()} onSave={(v) => { tmdb.setKey(v); setVersion((n) => n + 1) }} placeholder="Chiave API o token Read Access" getUrl="https://www.themoviedb.org/settings/api" getHow="Crea un account, poi Impostazioni → API → richiedi una chiave (uso personale) e copia la «API Key»." />
             <ConnRow name="OMDb" desc="Voti di IMDb, Rotten Tomatoes e Metacritic. Il piano gratuito dà 1.000 richieste al giorno." value={getOmdbKey()} onSave={(v) => { setOmdbKey(v); setVersion((n) => n + 1) }} placeholder="Chiave OMDb" getUrl="https://www.omdbapi.com/apikey.aspx" getHow="Scegli il piano FREE, inserisci l'email e clicca il link di attivazione che ti arriva." />
-            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
+            <ConnRow name="Anthropic" desc="Per cercare con una frase e per le schede «Cosa aspettarti». Ogni richiesta ha un piccolo costo a tuo carico." value={getOwnAiKey()} onSave={(v) => { setAiKey(v); setVersion((n) => n + 1) }} placeholder="sk-ant-…" getUrl="https://console.anthropic.com/settings/keys" getHow="Accedi alla Console Anthropic, aggiungi un po' di credito in Billing, poi API keys → Create key e copia la chiave (inizia con sk-ant-)." />
           </Section>
 
           <Section id="platforms" icon="film" title="I tuoi abbonamenti" desc="Compaiono già selezionati nei filtri e in «Scegli per me», così vedi solo ciò che puoi guardare davvero.">
